@@ -1,0 +1,4 @@
+test:
+  _target_: src.datasets.CustomDirAudioDataset
+  data_path: custom_data/transcriptions
+  text_from_console: ${inferencer.text_from_console}

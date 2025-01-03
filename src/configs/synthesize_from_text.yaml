@@ -1,0 +1,14 @@
+defaults:
+  - model: hifigan
+  - metrics: mos_metric
+  - datasets: custom_dataset # we do not want to run inference on training data
+  - dataloader: synthesize_loader
+  - transforms: no_transforms
+  - _self_
+inferencer:
+  device_tensors: ["generated_from_text_melspec"] # which tensors should be on device (ex. GPU)
+  device: auto # device name or "auto"
+  save_path: "example" # any name here, can be a dataset name
+  seed: 1
+  from_pretrained: "saved/best_model.pth" # path to the pretrained model
+  text_from_console: null
