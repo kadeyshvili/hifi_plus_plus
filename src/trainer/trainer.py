@@ -8,6 +8,7 @@ from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
 import torch.nn.functional as F
 from src.metrics.calculate_metrics import calculate_all_metrics
+from src.model.generator import mel_spectrogram
 
 
 
@@ -43,7 +44,7 @@ class Trainer(BaseTrainer):
 
 
         initial_wav = batch['wav']
-        initial_melspec = batch['melspec']
+        # initial_melspec = batch['melspec']
         wav_fake = self.model.generator(initial_wav)
  
         if initial_wav.shape != wav_fake.shape:
@@ -81,6 +82,8 @@ class Trainer(BaseTrainer):
 
         mpd_gen_loss = self.criterion.generator_loss(mpd_fake_out)
         msd_gen_loss = self.criterion.generator_loss(msd_fake_out)
+
+        initial_melspec = mel_spectrogram(initial_wav.squeeze(1), 1024, 80, 16000, 256, 1024, 0, 8000)
 
         mel_spec_loss = self.criterion.melspec_loss(initial_melspec, mel_spec_fake)
         
@@ -144,7 +147,6 @@ class Trainer(BaseTrainer):
             # Log Stuff
             self.log_spectrogram(partition='val', idx=batch_idx, **batch)
             self.log_audio(partition='val', idx=batch_idx,**batch)
-            self.log_predictions(**batch)
 
 
     def log_audio(self, wav, generated_wav, partition, idx, **batch):
@@ -171,21 +173,3 @@ class Trainer(BaseTrainer):
             image_fake = plot_spectrogram(spectrogram_for_plot_fake)
             self.writer.add_image("melspectrogram_fake", image_fake)
 
-
-    def log_predictions(self, examples_to_log=10, **batch):
-        all_wavs_generated = batch['generated_wav']
-        paths = batch['path']
-        initial_lengths = batch['initial_len']
-        rows = {}
-        tuples = list(zip(all_wavs_generated, paths, initial_lengths))
-        # for generated_wav, path, init_len in tuples[:examples_to_log]:
-            # mos = self.calc_mos.model.calculate_one(generated_wav[:, :init_len])
-            # rows[Path(path).name] = {
-            #     "MOS": mos,
-            #     "generated_wav" : self.writer.wandb.Audio(generated_wav.detach().cpu().numpy().T, sample_rate=22050)
-            # }
-            
-
-        self.writer.add_table(
-            "predictions", pd.DataFrame.from_dict(rows, orient="index")
-        )
