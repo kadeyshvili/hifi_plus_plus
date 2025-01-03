@@ -1,6 +1,7 @@
 import itertools
 from abc import ABC, abstractmethod
-
+import os
+import urllib.request
 import librosa
 import numpy as np
 import torch
@@ -67,8 +68,18 @@ class MOSNet(Metric):
     def __init__(self, sr=16000, **kwargs):
         super().__init__(**kwargs)
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        path = "src/weights/wave2vec2mos.pth"
 
-        self.mos_net = Wav2Vec2MOS("src/weights/wave2vec2mos.pth")
+        if (not os.path.exists(path)):
+            print("Downloading the checkpoint for WV-MOS")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            urllib.request.urlretrieve(
+                "https://zenodo.org/record/6201162/files/wav2vec2.ckpt?download=1",
+                path
+            )
+            print('Weights downloaded in: {} Size: {}'.format(path, os.path.getsize(path)))
+
+        self.mos_net = Wav2Vec2MOS(path)
         self.sr = sr
 
     def better(self, first, second):
