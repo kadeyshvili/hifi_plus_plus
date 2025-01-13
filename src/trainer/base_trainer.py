@@ -152,7 +152,7 @@ class BaseTrainer:
             self._resume_checkpoint(resume_path)
 
         if config.trainer.get("from_pretrained") is not None:
-            self._from_pretrained(config.trainer.get("from_pretrained"))
+            self._from_pretrained(config.trainer.get("from_pretrained"), config.trainer.get('custom'))
 
     def train(self):
         """
@@ -570,7 +570,7 @@ class BaseTrainer:
             f"Checkpoint loaded. Resume training from epoch {self.start_epoch}"
         )
 
-    def _from_pretrained(self, pretrained_path):
+    def _from_pretrained(self, pretrained_path, custom):
         """
         Init model with weights from pretrained pth file.
 
@@ -588,7 +588,15 @@ class BaseTrainer:
             print(f"Loading model weights from: {pretrained_path} ...")
         checkpoint = torch.load(pretrained_path, self.device)
 
-        if checkpoint.get("state_dict") is not None:
-            self.model.generator.load_state_dict(checkpoint["state_dict"])
+        if not custom:
+            if checkpoint.get("state_dict") is not None:
+                self.model.generator.load_state_dict(checkpoint["state_dict"])
+            else:
+                self.model.generator.load_state_dict(checkpoint)
         else:
-            self.model.generator.load_state_dict(checkpoint)
+            if checkpoint.get("state_dict") is not None:
+                self.model.load_state_dict(checkpoint["state_dict"])
+            else:
+                self.model.load_state_dict(checkpoint)
+    
+
