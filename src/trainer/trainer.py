@@ -153,9 +153,9 @@ class Trainer(BaseTrainer):
         init_len = batch['initial_len'][0]
         if partition != 'val':
             self.writer.add_audio("initial_wav", wav[0][:, :init_len], self.config.datasets.train.sampling_rate)
-            self.writer.add_audio("generated_wav", generated_wav[0][:, :init_len], self.config.datasets.train.sampling_rate)
+            self.writer.add_audio("generated_wav", generated_wav[0][:, :init_len], 48000)
         else:
-            self.writer.add_audio(f"initial_wav_{idx}", wav[0][:, :init_len], 48000)
+            self.writer.add_audio(f"initial_wav_{idx}", wav[0][:, :init_len], self.config.datasets.val.sampling_rate)
             self.writer.add_audio(f"generated_wav_{idx}", generated_wav[0][:, :init_len], 48000)
 
 
