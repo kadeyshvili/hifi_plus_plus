@@ -156,9 +156,9 @@ class Inferencer(BaseTrainer):
             if self.save_path is not None:
                 # you can use safetensors or other lib here
                 if path_to_save is not None:
-                    torchaudio.save(self.save_path / part /  f"{str(Path(path_to_save).stem)}.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=48000)
+                    torchaudio.save(self.save_path / part /  f"{str(Path(path_to_save).stem)}.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=self.config.datasets.test.sampling_rate)
                 else:
-                    torchaudio.save(self.save_path / part /  "wav_from_text_from_console.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=48000)
+                    torchaudio.save(self.save_path / part /  "wav_from_text_from_console.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=self.config.datasets.test.sampling_rate)
 
         return batch
 
