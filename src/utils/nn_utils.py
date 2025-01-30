@@ -537,10 +537,149 @@ class SpectralUNet(nn.Module):
         self.mel2lin = mel2lin
 
     def mel2linspec(self, mel):
+        print('mel2lin', self.mel2lin.shape)
+        # torch.Size([513, 80])
         return torch.matmul(self.mel2lin.to(mel), mel)
 
     def forward(self, mel):
+        print('initial', mel.shape)
+        # initial torch.Size([4, 80, 512])
+
         linspec_approx = self.mel2linspec(mel)
+
+
+        print('linspec_approx', linspec_approx.shape)
+        # linspec_approx torch.Size([4, 513, 512])
+
+        linspec_conv_approx = self.learnable_mel2linspec(mel)
+        print('linspec_conv_approx', linspec_conv_approx.shape)
+        # linspec_conv_approx torch.Size([4, 513, 512])
+
+        linspec_conv_approx = linspec_conv_approx.view(
+            mel.shape[0], 1, -1, mel.shape[2]
+        )
+        print('linspec_conv_approx', linspec_conv_approx.shape)
+        # linspec_conv_approx torch.Size([4, 1, 513, 512])
+
+
+        net_input = linspec_approx.view(
+            linspec_approx.shape[0], 1, -1, linspec_approx.shape[2]
+        )
+        print('net_input', net_input.shape)
+        # net_input torch.Size([4, 1, 513, 512])
+
+        if self.positional_encoding:
+            pos_enc = torch.linspace(0, 1, 513)[..., None].expand(
+                net_input.shape[0], 1, net_input.shape[2], net_input.shape[3]
+            )
+            print('pos_enc', pos_enc.shape)
+            # pos_enc torch.Size([4, 1, 513, 512])
+
+            net_input = torch.cat((net_input, pos_enc.to(net_input)), dim=1)
+            print('net_input', net_input.shape)
+            # net_input torch.Size([4, 2, 513, 512])
+
+        net_input = torch.cat((net_input, linspec_conv_approx), dim=1)
+        print('net input', net_input.shape)
+        #net input torch.Size([4, 3, 513, 512]) - right
+
+        out = self.net(net_input)
+        print('net output', out.shape)
+        # net output torch.Size([4, 8, 513, 512]) -right
+
+
+        out = self.post_conv_2d(out).squeeze(1)
+        print('post_conv_2d out', out.shape)
+        # post_conv_2d out torch.Size([4, 513, 512]) -right
+
+        out = self.post_conv_1d(out)
+        print('post_conv_1d out', out.shape)
+        # post_conv_1d out torch.Size([4, 128, 512]) -right
+
+
+        return out
+
+
+class AttentionBlock(nn.Module):
+    def __init__(self, embed_dim, num_heads, dropout=0.1):
+        super().__init__()
+        self.attention = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
+        self.norm = nn.LayerNorm(embed_dim)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        attn_output, _ = self.attention(x, x, x)
+        x = x + self.dropout(attn_output)  # Residual connection
+        x = self.norm(x)  # Normalization
+        return x
+
+
+class SpectralAttentionUNet(nn.Module):
+    def __init__(
+            self,
+            embed_dim=256,
+            num_heads=8,
+            depth=2,
+            positional_encoding=True,
+    ):
+        super().__init__()
+        self.positional_encoding = positional_encoding
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.depth = depth
+
+        # self.learnable_mel2linspec = nn.Linear(80, 513)  # Linear projection from mel to embedding space
+        norm = dict(weight=weight_norm, spectral=spectral_norm)['weight']
+        self.learnable_mel2linspec = norm(nn.Conv1d(80, 513, 1))
+
+
+        # Define attention-based encoder-decoder layers
+        self.encoder = nn.ModuleList([
+            AttentionBlock(embed_dim, num_heads) for _ in range(depth)
+        ])
+        self.decoder = nn.ModuleList([
+            AttentionBlock(embed_dim, num_heads) for _ in range(depth)
+        ])
+
+        # self.output_layer = nn.Sequential(
+            # nn.Linear(256, 128),  # Reduce embedding dimension to final output
+        # )
+
+        self.post_conv_1d = nn.Sequential(
+            norm(nn.Conv1d(self.embed_dim, 128, 1, 1, padding=0)),
+        )
+        self.mel2lin = None
+        self.calculate_mel2lin_matrix()
+
+    def calculate_mel2lin_matrix(self):
+        mel_np = librosa_mel_fn(
+            sr=16000, n_fft=1024, n_mels=80, fmin=0, fmax=8000
+        )
+        slices = [
+            (np.where(row)[0].min(), np.where(row)[0].max() + 1)
+            for row in mel_np
+        ]
+        slices = [x[0] for x in slices] + [slices[-1][1]]
+        mel2lin = np.zeros([81, 513])
+        for i, x1, x2 in zip(range(80), slices[:-1], slices[1:]):
+            mel2lin[i, x1: x2 + 1] = np.linspace(1, 0, x2 - x1 + 1)
+            mel2lin[i + 1, x1: x2 + 1] = np.linspace(0, 1, x2 - x1 + 1)
+        mel2lin = mel2lin[1:]
+        mel2lin = torch.from_numpy(mel2lin.T).float()
+        self.mel2lin = mel2lin
+        
+
+    def mel2linspec(self, mel):
+        print('self.mel2lin', self.mel2lin.shape)
+        # torch.Size([513, 80])
+        return torch.matmul(self.mel2lin.to(mel), mel)
+
+    def forward(self, mel):
+        print('initial shape', mel.shape)
+        # initial shape torch.Size([4, 80, 256])
+        linspec_approx = self.mel2linspec(mel)
+        print('linspec_approx', linspec_approx.shape)
+        # torch.Size([4, 513, 256])
 
         linspec_conv_approx = self.learnable_mel2linspec(mel)
         linspec_conv_approx = linspec_conv_approx.view(
@@ -556,11 +695,31 @@ class SpectralUNet(nn.Module):
             )
             net_input = torch.cat((net_input, pos_enc.to(net_input)), dim=1)
         net_input = torch.cat((net_input, linspec_conv_approx), dim=1)
+        print('net_input', net_input.shape)
+        #net_input torch.Size([4, 3, 513, 256])
 
-        out = self.net(net_input)
-
-        out = self.post_conv_2d(out).squeeze(1)
-        out = self.post_conv_1d(out)
+        
+        batch_size, num_channels, freq_bins, seq_len = net_input.shape
+        
+        net_input = net_input.view(batch_size, seq_len, num_channels * freq_bins)
+        print('net_input after view', net_input.shape)
+        # torch.Size([4, 256, 1539])
+        if net_input.size(-1) != self.embed_dim:
+            net_input = nn.Linear(net_input.size(-1), self.embed_dim)(net_input)
+            print('net_input after linear', net_input.shape)
+            # torch.Size([4, 256, 512])
+        linspec_embed = net_input
+    
+        
+        for layer in self.encoder:
+            linspec_embed = layer(linspec_embed)
+        for layer in self.decoder:
+            linspec_embed = layer(linspec_embed)
+        print('linspec_embed', linspec_embed.shape)
+        # torch.Size([4, 256, 512])
+        # out = self.output_layer(linspec_embed.transpose(1, 2)).transpose(1, 2)
+        out = self.post_conv_1d(linspec_embed.transpose(1, 2))
+        print('out', out.shape)
 
         return out
 
