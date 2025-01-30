@@ -7,7 +7,6 @@ from src.model.discriminator_s import MultiScaleDiscriminator
 
 class HiFiGAN(nn.Module):
     def __init__(self,
-                 generator_config,
                  mpd_config,
                  msd_config):
         super().__init__()

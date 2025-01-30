@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm, spectral_norm
 from librosa.filters import mel as librosa_mel_fn
+from src.utils.frepainter_attention import PreNorm, Attention, FeedForward
+
 
 
 def init_weights(m, mean=0.0, std=0.01):
@@ -600,19 +602,21 @@ class SpectralUNet(nn.Module):
         return out
 
 
-class AttentionBlock(nn.Module):
-    def __init__(self, embed_dim, num_heads, dropout=0.1):
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
         super().__init__()
-        self.attention = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout, batch_first=True)
-        self.norm = nn.LayerNorm(embed_dim)
-        self.dropout = nn.Dropout(dropout)
-
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
     def forward(self, x):
-        attn_output, _ = self.attention(x, x, x)
-        x = x + self.dropout(attn_output)  # Residual connection
-        x = self.norm(x)  # Normalization
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
         return x
-
 
 class SpectralAttentionUNet(nn.Module):
     def __init__(
@@ -628,22 +632,10 @@ class SpectralAttentionUNet(nn.Module):
         self.num_heads = num_heads
         self.depth = depth
 
-        # self.learnable_mel2linspec = nn.Linear(80, 513)  # Linear projection from mel to embedding space
         norm = dict(weight=weight_norm, spectral=spectral_norm)['weight']
         self.learnable_mel2linspec = norm(nn.Conv1d(80, 513, 1))
 
-
-        # Define attention-based encoder-decoder layers
-        self.encoder = nn.ModuleList([
-            AttentionBlock(embed_dim, num_heads) for _ in range(depth)
-        ])
-        self.decoder = nn.ModuleList([
-            AttentionBlock(embed_dim, num_heads) for _ in range(depth)
-        ])
-
-        # self.output_layer = nn.Sequential(
-            # nn.Linear(256, 128),  # Reduce embedding dimension to final output
-        # )
+        self.encoder = nn.ModuleList([Transformer(embed_dim, 1, num_heads, embed_dim // num_heads, 4 * embed_dim) for _ in range(depth)]) 
 
         self.post_conv_1d = nn.Sequential(
             norm(nn.Conv1d(self.embed_dim, 128, 1, 1, padding=0)),
@@ -710,12 +702,11 @@ class SpectralAttentionUNet(nn.Module):
             # torch.Size([4, 256, 512])
         linspec_embed = net_input
     
-        
         for layer in self.encoder:
             linspec_embed = layer(linspec_embed)
-        for layer in self.decoder:
-            linspec_embed = layer(linspec_embed)
         print('linspec_embed', linspec_embed.shape)
+        # linspec_embed = self.decoder(linspec_embed)
+        # print('linspec_embed', linspec_embed.shape)
         # torch.Size([4, 256, 512])
         # out = self.output_layer(linspec_embed.transpose(1, 2)).transpose(1, 2)
         out = self.post_conv_1d(linspec_embed.transpose(1, 2))
