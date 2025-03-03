@@ -135,11 +135,11 @@ class VCTKDataset(BaseDataset):
         (vctk_audio, ) = split_audios([vctk_audio],
                                       self.segment_size, self.split)
 
-        lp_inp = low_pass_filter(
-            vctk_audio, self.input_freq,
-            lp_type=self.lowpass, orig_sr=self.sampling_rate
-        )
-        input_audio = normalize(lp_inp)[None] * 0.95
+        # lp_inp = low_pass_filter(
+        #     vctk_audio, self.input_freq,
+        #     lp_type=self.lowpass, orig_sr=self.sampling_rate
+        # )
+        input_audio = normalize(vctk_audio)[None] * 0.95
         assert input_audio.shape[1] == vctk_audio.size
 
         input_audio = torch.FloatTensor(input_audio)

@@ -9,6 +9,29 @@ import numpy as np
 
 
 
+def amp_pha_stft(audio, n_fft, hop_size, win_size, center=True):
+
+    hann_window = torch.hann_window(win_size).to(audio.device)
+    stft_spec = torch.stft(audio, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window,
+                           center=center, pad_mode='reflect', normalized=False, return_complex=True)
+    log_amp = torch.log(torch.abs(stft_spec)+1e-4)
+    pha = torch.angle(stft_spec)
+
+    com = torch.stack((torch.exp(log_amp)*torch.cos(pha), 
+                       torch.exp(log_amp)*torch.sin(pha)), dim=-1)
+
+    return log_amp, pha, com
+
+
+def amp_pha_istft(log_amp, pha, n_fft, hop_size, win_size, center=True):
+    
+    amp = torch.exp(log_amp)
+    com = torch.complex(amp*torch.cos(pha), amp*torch.sin(pha))
+    hann_window = torch.hann_window(win_size).to(com.device)
+    audio = torch.istft(com, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window, center=center)
+
+    return audio
+
 mel_basis = {}
 hann_window = {}
 
@@ -62,7 +85,6 @@ def mel_spectrogram(
         onesided=True,
         return_complex=False,
     )
-
     spec = torch.sqrt(spec.pow(2).sum(-1) + 1e-9)
 
     mel = torch.matmul(mel_basis[str(fmax) + "_" + str(y.device)], spec)
@@ -82,17 +104,9 @@ def closest_power_of_two(n):
     return 1 << (n - 1).bit_length()
 
 
-class HiFiPlusGenerator(torch.nn.Module):
+class HiFiPlusGeneratorBWE(torch.nn.Module):
     def __init__(
         self,
-        hifi_resblock="1",
-        hifi_upsample_rates=(8, 8, 2, 2),
-        hifi_upsample_kernel_sizes=(16, 16, 4, 4),
-        hifi_upsample_initial_channel=128,
-        hifi_resblock_kernel_sizes=(3, 7, 11),
-        hifi_resblock_dilation_sizes=((1, 3, 5), (1, 3, 5), (1, 3, 5)),
-        hifi_input_channels=128,
-        hifi_conv_pre_kernel_size=1,
 
         use_spectralunet=True,
         spectralunet_block_widths=(8, 16, 24, 32, 64),
@@ -110,8 +124,18 @@ class HiFiPlusGenerator(torch.nn.Module):
         norm_type: Literal["weight", "spectral"] = "weight",
         use_skip_connect=True,
         waveunet_before_spectralmasknet=True,
+        ConvNeXt_channels = 512,
+        ConvNeXt_layers = 8,
+        n_fft = 256, 
+        hop_size = 80,
+        win_size = 320,
+
     ):
         super().__init__()
+
+        self.n_fft = n_fft
+        self.hop_size = hop_size
+        self.win_size = win_size
         self.norm = dict(weight=weight_norm, spectral=spectral_norm)[norm_type]
         self.norm_type = norm_type
 
@@ -122,18 +146,10 @@ class HiFiPlusGenerator(torch.nn.Module):
         self.use_skip_connect = use_skip_connect
         self.waveunet_before_spectralmasknet = waveunet_before_spectralmasknet
 
-        self.hifi = nn_utils.HiFiGeneratorBackbone(
-            resblock=hifi_resblock,
-            upsample_rates=hifi_upsample_rates,
-            upsample_kernel_sizes=hifi_upsample_kernel_sizes,
-            upsample_initial_channel=hifi_upsample_initial_channel,
-            resblock_kernel_sizes=hifi_resblock_kernel_sizes,
-            resblock_dilation_sizes=hifi_resblock_dilation_sizes,
-            input_channels=hifi_input_channels,
-            conv_pre_kernel_size=hifi_conv_pre_kernel_size,
-            norm_type=norm_type,
-        )
-        ch = self.hifi.out_channels
+        self.bwe_blocks = nn_utils.APNet_BWE_Model(ConvNeXt_channels=ConvNeXt_channels, ConvNeXt_layers=ConvNeXt_layers, n_fft=n_fft)
+
+        # ch = self.hifi.out_channels
+        ch = 8
 
         if self.use_spectralunet:
             self.spectralunet = nn_utils.SpectralUNet(
@@ -142,7 +158,6 @@ class HiFiPlusGenerator(torch.nn.Module):
                 positional_encoding=spectralunet_positional_encoding,
                 norm_type=norm_type,
             )
-            # self.spectralunet=nn_utils.SpectralAttentionUNet()
 
         if self.use_waveunet:
             self.waveunet = nn_utils.MultiScaleResnet(
@@ -213,7 +228,11 @@ class HiFiPlusGenerator(torch.nn.Module):
 
     def forward(self, x_orig):
         x = self.apply_spectralunet(x_orig)
-        x = self.hifi(x)
+        mag, pha, com = amp_pha_stft(x, self.n_fft, self.hop_size, self.win_size)
+            
+        mag_wb_g, pha_wb_g, com_wb_g = self.bwe_blocks(mag, pha)
+
+        x = amp_pha_istft(mag_wb_g, pha_wb_g, self.n_fft, self.hop_size, self.win_size)
         if self.use_waveunet and self.waveunet_before_spectralmasknet:
             x = self.apply_waveunet(x)
         if self.use_spectralmasknet:
@@ -226,17 +245,10 @@ class HiFiPlusGenerator(torch.nn.Module):
 
         return x
 
-class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
+class A2AHiFiPlusGeneratorBWEV2(HiFiPlusGeneratorBWE):
     def __init__(
         self,
-        hifi_resblock="1",
-        hifi_upsample_rates=(8, 8, 2, 2),
-        hifi_upsample_kernel_sizes=(16, 16, 4, 4),
-        hifi_upsample_initial_channel=128,
-        hifi_resblock_kernel_sizes=(3, 7, 11),
-        hifi_resblock_dilation_sizes=((1, 3, 5), (1, 3, 5), (1, 3, 5)),
-        hifi_input_channels=128,
-        hifi_conv_pre_kernel_size=1,
+
 
         use_spectralunet=True,
         spectralunet_block_widths=(8, 16, 24, 32, 64),
@@ -258,15 +270,6 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
         waveunet_input: Literal["waveform", "hifi", "both"] = "both",
     ):
         super().__init__(
-            hifi_resblock=hifi_resblock,
-            hifi_upsample_rates=hifi_upsample_rates,
-            hifi_upsample_kernel_sizes=hifi_upsample_kernel_sizes,
-            hifi_upsample_initial_channel=hifi_upsample_initial_channel,
-            hifi_resblock_kernel_sizes=hifi_resblock_kernel_sizes,
-            hifi_resblock_dilation_sizes=hifi_resblock_dilation_sizes,
-            hifi_input_channels=hifi_input_channels,
-            hifi_conv_pre_kernel_size=hifi_conv_pre_kernel_size,
-
             use_spectralunet=use_spectralunet,
             spectralunet_block_widths=spectralunet_block_widths,
             spectralunet_block_depth=spectralunet_block_depth,
@@ -291,13 +294,15 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
         if self.waveunet_input == "waveform":
             self.waveunet_conv_pre = weight_norm(
                 nn.Conv1d(
-                    1, self.hifi.out_channels, 1
+                    # 1, self.hifi.out_channels, 1
+                    1, 8, 1
                 )
             )
         elif self.waveunet_input == "both":
             self.waveunet_conv_pre = weight_norm(
                 nn.Conv1d(
-                    1 + self.hifi.out_channels, self.hifi.out_channels, 1
+                    # 1 + self.hifi.out_channels, self.hifi.out_channels, 1
+                    1 + 8, 8, 1
                 )
             )
         
@@ -309,14 +314,6 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
         x = x.view(shape[0], -1, x.shape[-1])
         return x
     
-    # @staticmethod
-    # def get_spec(x):
-    #     shape = x.shape
-    #     x = x.view(shape[0] * shape[1], shape[2])
-    #     x = mel_spectrogram(x, 1024, 80, 16000, 256,
-    #                         1024, 0, 8000, return_mel_and_spec=True)[1]
-    #     x = x.view(shape[0], -1, x.shape[-1])
-    #     return x
 
     def apply_waveunet_a2a(self, x, x_orig):
         if self.waveunet_input == "waveform":
@@ -334,28 +331,31 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
         return x
 
     def forward(self, x):
-        print('x shape', x.shape)
-        # torch.Size([4, 1, 76527]) - right
-        # torch.Size([4, 1, 66230]) - what i get
-        x_orig = x.clone()
+        x_orig = x.clone() #audio
+        print('initial x_orig', x_orig.shape)
         x_orig = x_orig[:, :, : x_orig.shape[2] // 1024 * 1024]
-
-        print('x_orig', x_orig.shape)
-        # x_orig torch.Size([4, 1, 75776]) - right
-        # x_orig torch.Size([4, 1, 65536]) - what i get 
+        print('xropped x orig', x_orig.shape)
 
         x = self.get_melspec(x_orig)
-        print('++++++++++++++++++++++++++++++++++++')
+        print('****************************************')
         print(x.shape)
-        # torch.Size([4, 80, 296]) - right
-        # torch.Size([4, 80, 256]) - what i get 
+        # torch.Size([4, 80, 328])
         x = self.apply_spectralunet(x)
-        print('----------------------------------------------------')
-        #torch.Size([4, 512, 128]) - new
-        # torch.Size([4, 128, 296]) - right
+        
+        print('------------------------------------------')
         print(x.shape)
-        print('=====================================================')
-        x = self.hifi(x)
+        # torch.Size([4, 128, 328])
+        pha = torch.angle(x)
+        log_amp = torch.log(torch.abs(x)+1e-4)
+        
+        mag_wb_g, pha_wb_g, com_wb_g = self.bwe_blocks(log_amp, pha)
+        print(mag_wb_g.shape)
+
+        x_orig = amp_pha_istft(mag_wb_g, pha_wb_g, 1024, 256, 1024)
+        x_orig = x_orig.unsqueeze(1)
+        print(x_orig.shape)
+        print(x.shape)
+
         if self.use_waveunet and self.waveunet_before_spectralmasknet:
             x = self.apply_waveunet_a2a(x, x_orig)
         if self.use_spectralmasknet:
