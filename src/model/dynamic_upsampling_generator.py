@@ -357,7 +357,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
     def get_stft(x):
         shape = x.shape
         x = x.view(shape[0] * shape[1], shape[2])
-        x = stft(x, 1024, 80, 4000, 256, 1024, 0, 8000)
+        x = stft(x, 1024, 80, 2000, 256, 1024, 0, 8000)
         x = x.view(shape[0], -1, x.shape[-1])
         return x
     
