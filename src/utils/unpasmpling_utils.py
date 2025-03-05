@@ -399,7 +399,7 @@ class HiFiUpsampling(torch.nn.Module):
         
 
         self.hop_size = stft_params["hop_size"]
-        self.upsample_rates = [4, 8, 8]  
+        self.upsample_rates = [8, 8, 2, 2]  
         self.upsample_kernel_sizes = [r * 2 for r in self.upsample_rates]
         self.num_upsamples = len(self.upsample_rates)
         

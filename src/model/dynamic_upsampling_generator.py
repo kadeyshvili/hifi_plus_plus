@@ -327,7 +327,6 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             waveunet_before_spectralmasknet=waveunet_before_spectralmasknet,
         )
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.waveunet_input = waveunet_input
 
         self.waveunet_conv_pre = None
@@ -357,12 +356,10 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
     def get_stft(x):
         shape = x.shape
         x = x.view(shape[0] * shape[1], shape[2])
-        x = stft(x, 1024, 80, 2000, 256, 1024, 0, 8000)
+        x = stft(x, 1024, 80, 2000, 256, 1024, 0, 2000)
         x = x.view(shape[0], -1, x.shape[-1])
         return x
     
-    
-
     
     
     def apply_waveunet_a2a(self, x, x_orig):
@@ -403,7 +400,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
         x_orig = x_orig[..., :max_len]
         x_orig = torch.tensor(x_orig, dtype=initial_x.dtype).to(x.device)
 
-        x = self.get_stft(x_orig)
+        x = self.get_stft(initial_x)
         x = torch.abs(x)
 
         x = self.apply_spectralunet2(x)
