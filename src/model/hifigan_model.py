@@ -1,8 +1,4 @@
 import torch.nn as nn
-
-from src.model.generator import A2AHiFiPlusGeneratorV2
-from src.model.generator_wo_specunet import A2AHiFiPlusGeneratorV3
-from src.model.generator_with_bwe_blocks import A2AHiFiPlusGeneratorBWEV2
 from src.model.dynamic_upsampling_generator import A2AHiFiPlusGeneratorV4
 from src.model.discriminator_p import MultiPeriodDiscriminator
 from src.model.discriminator_s import MultiScaleDiscriminator

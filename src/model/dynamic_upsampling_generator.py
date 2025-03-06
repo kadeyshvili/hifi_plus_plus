@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import weight_norm, spectral_norm
-import src.utils.nn_utils as nn_utils
 from librosa.filters import mel as librosa_mel_fn
 import numpy as np
 import src.utils.unpasmpling_utils as unpasmpling_utils
@@ -186,7 +185,7 @@ class HiFiPlusGenerator(torch.nn.Module):
             )
 
         if self.use_waveunet:
-            self.waveunet = nn_utils.MultiScaleResnet(
+            self.waveunet = unpasmpling_utils.MultiScaleResnet(
                 waveunet_block_widths,
                 waveunet_block_depth,
                 mode="waveunet_k5",
@@ -196,7 +195,7 @@ class HiFiPlusGenerator(torch.nn.Module):
             )
 
         if self.use_spectralmasknet:
-            self.spectralmasknet = nn_utils.SpectralMaskNet(
+            self.spectralmasknet = unpasmpling_utils.SpectralMaskNet(
                 in_ch=ch,
                 block_widths=spectralmasknet_block_widths,
                 block_depth=spectralmasknet_block_depth,
@@ -224,7 +223,7 @@ class HiFiPlusGenerator(torch.nn.Module):
 
     def make_conv_post(self, ch):
         self.conv_post = self.norm(nn.Conv1d(ch, 1, 7, 1, padding=3))
-        self.conv_post.apply(nn_utils.init_weights)
+        self.conv_post.apply(unpasmpling_utils.init_weights)
 
     def apply_spectralunet2(self, x_reference):
         if self.use_spectralunet:
