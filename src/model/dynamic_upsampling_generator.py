@@ -121,6 +121,10 @@ def closest_power_of_two(n):
     return 1 << (n - 1).bit_length()
 
 
+
+
+
+
 class HiFiPlusGenerator(torch.nn.Module):
     def __init__(
         self,
@@ -160,6 +164,7 @@ class HiFiPlusGenerator(torch.nn.Module):
 
         self.use_skip_connect = use_skip_connect
         self.waveunet_before_spectralmasknet = waveunet_before_spectralmasknet
+        self.upsampling_block = unpasmpling_utils.UpsampleTwice(hifi_upsample_initial_channel)
 
         self.hifi = unpasmpling_utils.HiFiUpsampling(
             resblock=hifi_resblock,
@@ -221,22 +226,22 @@ class HiFiPlusGenerator(torch.nn.Module):
         self.conv_post = self.norm(nn.Conv1d(ch, 1, 7, 1, padding=3))
         self.conv_post.apply(nn_utils.init_weights)
 
-    def apply_spectralunet2(self, x_orig):
+    def apply_spectralunet2(self, x_reference):
         if self.use_spectralunet:
-            orig_length = x_orig.shape[-1]
+            orig_length = x_reference.shape[-1]
             pad_size = (
                 closest_power_of_two(orig_length) - orig_length
             )
             
             if pad_size > 0:
-                x = torch.nn.functional.pad(x_orig, (0, pad_size))
+                x = torch.nn.functional.pad(x_reference, (0, pad_size))
             else:
-                x = x_orig
+                x = x_reference
         
             x_mag = self.spectralunet2(x)
             x_mag = x_mag[..., :orig_length]
         else:
-            x = x_orig.squeeze(1)
+            x = x_reference.squeeze(1)
         return x_mag
 
     def apply_waveunet(self, x):
@@ -253,8 +258,8 @@ class HiFiPlusGenerator(torch.nn.Module):
             x += self.spectralmasknet_skip_connect(x_a)
         return x
 
-    def forward(self, x_orig):
-        x = self.apply_spectralunet2(x_orig)
+    def forward(self, x_reference):
+        x = self.apply_spectralunet2(x_reference)
         x = self.hifi(x)
         if self.use_waveunet and self.waveunet_before_spectralmasknet:
             x = self.apply_waveunet(x)
@@ -362,11 +367,11 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
     
     
     
-    def apply_waveunet_a2a(self, x, x_orig):
+    def apply_waveunet_a2a(self, x, x_reference):
         if self.waveunet_input == "waveform":
-            x_a = self.waveunet_conv_pre(x_orig)
+            x_a = self.waveunet_conv_pre(x_reference)
         elif self.waveunet_input == "both":
-            x_a = torch.cat([x, x_orig], 1)
+            x_a = torch.cat([x, x_reference], 1)
             x_a = self.waveunet_conv_pre(x_a)
         elif self.waveunet_input == "hifi":
             x_a = x
@@ -394,25 +399,26 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             
             resampled_list.append(x_resampled)
         
-        x_orig = np.stack(resampled_list)
-        
-        max_len = (x_orig.shape[-1] // 1024) * 1024
-        x_orig = x_orig[..., :max_len]
-        x_orig = torch.tensor(x_orig, dtype=initial_x.dtype).to(x.device)
+        x_reference = np.stack(resampled_list)
+        x_reference = x_reference[..., :x_reference.shape[-1] // 1024 * 1024]
+        initial_x = initial_x[..., : initial_x.shape[-1] // 1024 * 1024]
+        x_reference = torch.tensor(x_reference, dtype=initial_x.dtype).to(x.device)
 
         x = self.get_stft(initial_x)
         x = torch.abs(x)
 
         x = self.apply_spectralunet2(x)
+        x = self.upsampling_block(x)
         x = self.hifi(x)
         
         if self.use_waveunet and self.waveunet_before_spectralmasknet:
-            x = self.apply_waveunet_a2a(x, x_orig)
+            print(x_reference.shape[-1])
+            print(x.shape[-1])
+            x = self.apply_waveunet_a2a(x, x_reference[..., :x.shape[-1]])
         if self.use_spectralmasknet:
             x = self.apply_spectralmasknet(x)
         if self.use_waveunet and not self.waveunet_before_spectralmasknet:
-            x = self.apply_waveunet_a2a(x, x_orig)
-
+            x = self.apply_waveunet_a2a(x, x_reference)
         x = self.conv_post(x)
         x = torch.tanh(x)
 
