@@ -8,7 +8,7 @@ import itertools
 from src.datasets.data_utils import inf_loop
 from src.metrics.tracker import MetricTracker
 from src.utils.io_utils import ROOT_PATH
-from src.model.melspec import MelSpectrogramConfig, MelSpectrogram
+from src.model.melspec import  MelSpectrogram
 # from src.metrics.calculate_mos import MosMetric
 import pandas as pd
 import numpy as np
@@ -80,9 +80,7 @@ class BaseTrainer:
         self.gen_lr_scheduler = gen_lr_scheduler
         self.disc_lr_scheduler = disc_lr_scheduler
         self.batch_transforms = batch_transforms
-        # self.calc_mos = MosMetric()
-        mel_spec_config = MelSpectrogramConfig()
-        self.create_mel_spec = MelSpectrogram(mel_spec_config).to(self.device)
+        self.create_mel_spec = MelSpectrogram(sr=config.datasets.train.target_sr).to(self.device)
         # define dataloaders
         self.train_dataloader = dataloaders["train"]
         if epoch_len is None:

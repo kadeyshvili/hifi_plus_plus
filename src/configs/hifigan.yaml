@@ -1,10 +1,10 @@
 defaults:
   - model: hifigan
   - writer: wandb
-  - metrics: mos_metric
+  - metrics: metrics
   - datasets: hifi_dataset
   - dataloader: loader
-  - transforms: example_only_instance
+  - transforms: no_transforms
   - _self_
 gen_optimizer:
   _target_: torch.optim.AdamW
@@ -28,7 +28,7 @@ trainer:
   log_step: 1
   n_epochs: 1
   epoch_len: 2
-  device_tensors: ["wav", "melspec"] # which tensors should be on device (ex. GPU)
+  device_tensors: ["wav_lr", "wav_hr", "melspec_lr", "melspec_hr"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: True # if True, will override the previous run with the same name

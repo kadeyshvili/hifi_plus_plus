@@ -315,9 +315,7 @@ class MultiScaleResnet2d(nn.Module):
         super().__init__()
         self.in_width = in_width
         self.out_dims = out_width
-        norm = dict(
-            weight=weight_norm, spectral=spectral_norm, id=lambda x: x
-        )[norm_type]
+        norm = dict(weight=weight_norm, spectral=spectral_norm, id=lambda x: x)[norm_type]
         net = build_block(block_widths[-1], block_depth, mode, norm)
         for i in range(len(block_widths) - 1):
             width = block_widths[-2 - i]
@@ -384,17 +382,29 @@ class UpsampleTwice(torch.nn.Module):
     def __init__(
             self, 
             initial_channels,
+            upsample_rates, 
+            upsample_kernel_sizes,
+            norm_type: Literal["weight", "spectral", "id"] = "id",
     ):
         super().__init__()
-        self.upsample = nn.ConvTranspose1d(
+        self.norm = dict(weight=weight_norm, spectral=spectral_norm, id=lambda x: x)[norm_type]
+
+        self.upsample_blocks = nn.ModuleList()
+        for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
+            self.upsample_blocks.append(
+                self.norm(
+                    nn.ConvTranspose1d(
                         initial_channels,
                         initial_channels,
-                        4,
-                        2,
-                        padding=1,
+                        k,
+                        u,
+                        padding=(k - u) // 2,
                     )
+                )
+            )
     def forward(self, x):
-        out = self.upsample(x)
+        for i in range(len(self.upsample_blocks)):
+            out = self.upsample_blocks[i](x)
         return out
 
 

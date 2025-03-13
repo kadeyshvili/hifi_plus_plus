@@ -16,26 +16,43 @@ def collate_fn(dataset_items: list[dict]):
     """
 
     result_batch = {}
-    all_wavs = []
-    all_melspecs = []
-    max_len_wav = 0
-    max_len_spec = 0
-    paths = []
-    initial_lens = []
+    all_wavs_lr = []
+    all_wavs_hr = []
+    all_melspecs_lr = []
+    all_melspecs_hr = []
+    max_len_wav_lr = 0
+    max_len_wav_hr = 0
+    max_len_spec_lr = 0
+    max_len_spec_hr = 0
+    paths_lr = []
+    paths_hr = []
+    initial_lens_lr = []
+    initial_lens_hr = []
     
     for item in dataset_items:
-        paths.append(item['path'])
-        all_wavs.append(item['wav'].squeeze(0))
-        all_melspecs.append(item['melspec'])
-        max_len_wav = max(len(item['wav'].squeeze(0)), max_len_wav)
-        max_len_spec =  max(item['melspec'].shape[-1], max_len_spec)
-        initial_lens.append(item['wav'].shape[1])
+        paths_lr.append(item['path_lr'])
+        paths_hr.append(item['path_hr'])
+        all_wavs_lr.append(item['wav_lr'].squeeze(0))
+        all_wavs_hr.append(item['wav_hr'].squeeze(0))
+        all_melspecs_lr.append(item['melspec_lr'])
+        all_melspecs_hr.append(item['melspec_hr'])
+        max_len_wav_lr = max(len(item['wav_lr'].squeeze(0)), max_len_wav_lr)
+        max_len_wav_hr = max(len(item['wav_hr'].squeeze(0)), max_len_wav_hr)
+        max_len_spec_lr =  max(item['melspec_lr'].shape[-1], max_len_spec_lr)
+        max_len_spec_hr =  max(item['melspec_hr'].shape[-1], max_len_spec_hr)
+        initial_lens_lr.append(item['wav_lr'].shape[1])
+        initial_lens_hr.append(item['wav_hr'].shape[1])
 
-    result_batch['initial_len'] = initial_lens
-    padded_wavs = torch.stack([F.pad(wav, (0, max_len_wav - wav.shape[0]), value=0) for wav in all_wavs])
-    padded_specs = torch.stack([F.pad(spec, (0, max_len_spec - spec.shape[-1], 0, 0)) for spec in all_melspecs])
-    result_batch['wav'] = padded_wavs.unsqueeze(1)
-    result_batch['melspec'] = padded_specs
-
-    result_batch['path'] = paths
+    result_batch['initial_len_lr'] = initial_lens_lr
+    result_batch['initial_len_hr'] = initial_lens_hr
+    padded_wavs_lr = torch.stack([F.pad(wav, (0, max_len_wav_lr - wav.shape[0]), value=0) for wav in all_wavs_lr])
+    padded_wavs_hr = torch.stack([F.pad(wav, (0, max_len_wav_hr - wav.shape[0]), value=0) for wav in all_wavs_hr])
+    padded_specs_lr = torch.stack([F.pad(spec, (0, max_len_spec_lr - spec.shape[-1], 0, 0)) for spec in all_melspecs_lr])
+    padded_specs_hr = torch.stack([F.pad(spec, (0, max_len_spec_hr - spec.shape[-1], 0, 0)) for spec in all_melspecs_hr])
+    result_batch['wav_lr'] = padded_wavs_lr.unsqueeze(1)
+    result_batch['wav_hr'] = padded_wavs_hr.unsqueeze(1)
+    result_batch['melspec_lr'] = padded_specs_lr
+    result_batch['melspec_hr'] = padded_specs_hr
+    result_batch['paths_lr'] = paths_lr
+    result_batch['paths_hr'] = paths_hr
     return result_batch

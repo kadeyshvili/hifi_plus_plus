@@ -1,61 +1,37 @@
-from dataclasses import dataclass
-
 import torch
 from torch import nn
-
 import torchaudio
-
 import librosa
-from librosa.filters import mel as librosa_mel_fn
-from librosa.util import normalize
-import numpy as np
 
-
-@dataclass
-class MelSpectrogramConfig:
-    sr: int = 16000
-    win_length: int = 1024
-    hop_length: int = 256
-    n_fft: int = 1024
-    f_min: int = 0
-    f_max: int = 8000
-    n_mels: int = 80
-    power: float = 1.0
-
-    # value of melspectrograms if we fed a silence into `MelSpectrogram`
-    pad_value: float = -11.5129251
 
 
 class MelSpectrogram(nn.Module):
 
-    def __init__(self, config: MelSpectrogramConfig):
-        super(MelSpectrogram, self).__init__()
-
-        self.config = config
-
+    def __init__(self, sr=16000, win_length=1024, hop_length=256, n_fft= 1024, f_min=0, f_max=8000, n_mels=80 , power=1.0, pad_value=-11.5129251):
+        super().__init__()
         self.mel_spectrogram = torchaudio.transforms.MelSpectrogram(
-            sample_rate=config.sr,
-            win_length=config.win_length,
-            hop_length=config.hop_length,
-            n_fft=config.n_fft,
-            f_min=config.f_min,
-            f_max=config.f_max,
-            n_mels=config.n_mels,
+            sample_rate=sr,
+            win_length=win_length,
+            hop_length=hop_length,
+            n_fft=n_fft,
+            f_min=f_min,
+            f_max=f_max,
+            n_mels=n_mels,
             center=False,
-            pad=(config.n_fft - config.hop_length) // 2
+            pad=(n_fft - hop_length) // 2,
         )
 
         # The is no way to set power in constructor in 0.5.0 version.
-        self.mel_spectrogram.spectrogram.power = config.power
+        self.mel_spectrogram.spectrogram.power = power
 
         # Default `torchaudio` mel basis uses HTK formula. In order to be compatible with WaveGlow
         # we decided to use Slaney one instead (as well as `librosa` does by default).
         mel_basis = librosa.filters.mel(
-            sr=config.sr,
-            n_fft=config.n_fft,
-            n_mels=config.n_mels,
-            fmin=config.f_min,
-            fmax=config.f_max
+            sr=sr,
+            n_fft=n_fft,
+            n_mels=n_mels,
+            fmin=f_min,
+            fmax=f_max
         ).T
         self.mel_spectrogram.mel_scale.fb.copy_(torch.tensor(mel_basis))
 

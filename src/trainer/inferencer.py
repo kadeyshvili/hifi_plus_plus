@@ -128,15 +128,12 @@ class Inferencer(BaseTrainer):
         batch = self.move_batch_to_device(batch)
         batch = self.transform_batch(batch)  # transform batch on device -- faster
 
-        if 'wav' not  in batch.keys():
-            generated_wavs = self.model.generator(batch['generated_from_text_melspec'].squeeze(1))
-        else:
-            generated_wavs = self.model.generator(batch['wav'])
+        generated_wavs = self.model.generator(batch['wav_lr'])
         batch['generated_wav'] = generated_wavs
 
 
         if metrics is not None:
-            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"])
+            calculate_all_metrics(batch['generated_wav'], batch['wav_hr'], self.metrics["inference"])
             for met in self.metrics["inference"]:
                 metrics.update(met.name, np.mean(met.result['mean']))
                 # met.result['mean'] = []
@@ -151,15 +148,12 @@ class Inferencer(BaseTrainer):
             # clone because of
             # https://github.com/pytorch/pytorch/issues/1995
             generated_wavs = batch["generated_wav"][i].detach().clone()
-            path_to_save =  batch["path"][i]
+            path_to_save =  batch["path_hr"][i]
 
             if self.save_path is not None:
                 # you can use safetensors or other lib here
-                if path_to_save is not None:
-                    torchaudio.save(self.save_path / part /  f"{str(Path(path_to_save).stem)}.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=self.config.datasets.test.sampling_rate)
-                else:
-                    torchaudio.save(self.save_path / part /  "wav_from_text_from_console.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=self.config.datasets.test.sampling_rate)
-
+                torchaudio.save(self.save_path / part /  f"{str(Path(path_to_save).stem)}.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=self.config.datasets.test.target_sr)
+              
         return batch
 
     def _inference_part(self, part, dataloader):

@@ -8,7 +8,7 @@ from src.metrics.tracker import MetricTracker
 from src.trainer.base_trainer import BaseTrainer
 import torch.nn.functional as F
 from src.metrics.calculate_metrics import calculate_all_metrics
-from src.model.generator import mel_spectrogram
+from src.model.dynamic_upsampling_generator import mel_spectrogram
 
 
 
@@ -42,22 +42,23 @@ class Trainer(BaseTrainer):
         if self.is_train:
             metric_funcs = self.metrics["train"]
 
-
-        initial_wav = batch['wav']
-        # initial_melspec = batch['melspec']
-        wav_fake = self.model.generator(initial_wav)
+        initial_wav = batch['wav_lr']
+        target_wav = batch['wav_hr']
+        initial_sr = self.config.datasets.train.initial_sr
+        target_sr = self.config.datasets.train.target_sr
+        wav_fake = self.model.generator(initial_wav, initial_sr, target_sr)
  
-        if initial_wav.shape != wav_fake.shape:
-            wav_fake = torch.stack([F.pad(wav, (0, initial_wav.shape[2] - wav_fake.shape[2]), value=0) for wav in wav_fake])
+        if target_wav.shape != wav_fake.shape:
+            wav_fake = torch.stack([F.pad(wav, (0, target_wav.shape[2] - wav_fake.shape[2]), value=0) for wav in wav_fake])
         batch["generated_wav"] = wav_fake
         mel_spec_fake = self.create_mel_spec(wav_fake).squeeze(1)
         batch['mel_spec_fake'] = mel_spec_fake
         if self.is_train:
             self.disc_optimizer.zero_grad()
 
-        mpd_gt_out, _, mpd_fake_out, _ = self.model.mpd(initial_wav, wav_fake.detach())
+        mpd_gt_out, _, mpd_fake_out, _ = self.model.mpd(target_wav, wav_fake.detach())
 
-        msd_gt_out, _,  msd_fake_out, _ = self.model.msd(initial_wav, wav_fake.detach())
+        msd_gt_out, _,  msd_fake_out, _ = self.model.msd(target_wav, wav_fake.detach())
 
         mpd_disc_loss = self.criterion.discriminator_loss(mpd_gt_out, mpd_fake_out)
         msd_disc_loss = self.criterion.discriminator_loss(msd_gt_out, msd_fake_out)
@@ -74,18 +75,16 @@ class Trainer(BaseTrainer):
             self.gen_optimizer.zero_grad()
 
 
+        _, mpd_gt_feats, mpd_fake_out, mpd_fake_feats = self.model.mpd(target_wav, wav_fake)
 
-
-        _, mpd_gt_feats, mpd_fake_out, mpd_fake_feats = self.model.mpd(initial_wav, wav_fake)
-
-        _, msd_gt_features, msd_fake_out, msd_fake_feats = self.model.msd(initial_wav, wav_fake)     
+        _, msd_gt_features, msd_fake_out, msd_fake_feats = self.model.msd(target_wav, wav_fake)     
 
         mpd_gen_loss = self.criterion.generator_loss(mpd_fake_out)
         msd_gen_loss = self.criterion.generator_loss(msd_fake_out)
 
-        initial_melspec = mel_spectrogram(initial_wav.squeeze(1), 1024, 80, 16000, 256, 1024, 0, 8000)
+        target_melspec = mel_spectrogram(target_wav.squeeze(1), 1024, 80, 16000, 256, 1024, 0, 8000)
 
-        mel_spec_loss = self.criterion.melspec_loss(initial_melspec, mel_spec_fake)
+        mel_spec_loss = self.criterion.melspec_loss(target_melspec, mel_spec_fake)
         
         mpd_feats_gen_loss = self.criterion.fm_loss(mpd_gt_feats, mpd_fake_feats)
         msd_feats_gen_loss = self.criterion.fm_loss(msd_gt_features, msd_fake_feats)
@@ -116,11 +115,8 @@ class Trainer(BaseTrainer):
             metrics.update(loss_name, batch[loss_name].item())
 
         if not self.is_train:
-            # for i in range(len(self.metrics["inference"])):
-            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"])
-            # for metric in self.metrics["inference"]:
+            calculate_all_metrics(batch['generated_wav'], batch['wav_hr'], self.metrics["inference"])
 
-            # self.metrics["inference"][i](batch['generated_wav'], batch['initial_len'])
         return batch
 
     def _log_batch(self, batch_idx, batch, mode="train"):
@@ -149,27 +145,27 @@ class Trainer(BaseTrainer):
             self.log_audio(partition='val', idx=batch_idx,**batch)
 
 
-    def log_audio(self, wav, generated_wav, partition, idx, **batch):
-        init_len = batch['initial_len'][0]
+    def log_audio(self, wav_lr, wav_hr,  generated_wav, partition, idx, **batch):
+        init_len_lr = batch['initial_len_lr'][0]
+        init_len_hr = batch['initial_len_hr'][0]
         if partition != 'val':
-            self.writer.add_audio("initial_wav", wav[0][:, :init_len], self.config.datasets.train.sampling_rate)
-            self.writer.add_audio("generated_wav", generated_wav[0][:, :init_len], self.config.datasets.train.sampling_rate)
+            self.writer.add_audio("initial_wav_lr", wav_lr[0][:, :init_len_lr], self.config.datasets.train.initial_sr)
+            self.writer.add_audio("initial_wav_hr", wav_hr[0][:, :init_len_hr], self.config.datasets.train.target_sr)
+            self.writer.add_audio("generated_wav", generated_wav[0][:, :init_len_hr], self.config.datasets.train.target_sr)
         else:
-            self.writer.add_audio(f"initial_wav_{idx}", wav[0][:, :init_len], self.config.datasets.val.sampling_rate)
-            self.writer.add_audio(f"generated_wav_{idx}", generated_wav[0][:, :init_len], self.config.datasets.val.sampling_rate)
+            self.writer.add_audio(f"initial_wav_lr_{idx}", wav_lr[0][:, :init_len_lr], self.config.datasets.val.initial_sr)
+            self.writer.add_audio(f"initial_wav_hr_{idx}", wav_hr[0][:, :init_len_hr], self.config.datasets.val.target_sr)
+            self.writer.add_audio(f"generated_wav_{idx}", generated_wav[0][:, :init_len_hr], self.config.datasets.val.target_sr)
 
 
-    def log_spectrogram(self, melspec,  mel_spec_fake, partition, idx, **batch):
-        spectrogram_for_plot_real = melspec[0].detach().cpu()
+    def log_spectrogram(self, melspec_lr, melspec_hr,  mel_spec_fake, partition, idx, **batch):
+        spectrogram_for_plot_real_lr = melspec_lr[0].detach().cpu()
+        spectrogram_for_plot_real_hr = melspec_hr[0].detach().cpu()
         spectrogram_for_plot_fake = mel_spec_fake[0].detach().cpu()
-        if partition != 'val':
-            image = plot_spectrogram(spectrogram_for_plot_real)
-            self.writer.add_image("melspectrogram_real", image)
-            image_fake = plot_spectrogram(spectrogram_for_plot_fake)
-            self.writer.add_image("melspectrogram_fake", image_fake)
-        else:
-            image = plot_spectrogram(spectrogram_for_plot_real)
-            self.writer.add_image("melspectrogram_real", image)
-            image_fake = plot_spectrogram(spectrogram_for_plot_fake)
-            self.writer.add_image("melspectrogram_fake", image_fake)
+        image = plot_spectrogram(spectrogram_for_plot_real_lr)
+        self.writer.add_image("melspectrogram_real_lr", image)
+        image_hr = plot_spectrogram(spectrogram_for_plot_real_hr)
+        self.writer.add_image("melspectrogram_real_hr", image_hr)
+        image_fake = plot_spectrogram(spectrogram_for_plot_fake)
+        self.writer.add_image("melspectrogram_fake", image_fake)
 
