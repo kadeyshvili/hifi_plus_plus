@@ -21,3 +21,5 @@ pesq
 pystoi
 llvmlite==0.40.0
 resampy
+sox
+librosa
