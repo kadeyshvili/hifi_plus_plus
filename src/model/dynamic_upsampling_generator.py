@@ -132,6 +132,7 @@ class HiFiPlusGenerator(torch.nn.Module):
         hifi_conv_pre_kernel_size=1,
 
         upsample_block_rates=[2],
+        upsample_init_channels = 513,
         upsample_block_kernel_sizes=[4], 
 
         use_spectralunet=True,
@@ -161,7 +162,7 @@ class HiFiPlusGenerator(torch.nn.Module):
 
         self.use_skip_connect = use_skip_connect
         self.waveunet_before_spectralmasknet = waveunet_before_spectralmasknet
-        self.upsampling_block = upsampling_utils.UpsampleTwice(hifi_upsample_initial_channel, upsample_block_rates, upsample_block_kernel_sizes)
+        self.upsampling_block = upsampling_utils.UpsampleTwice(upsample_init_channels, upsample_block_rates, upsample_block_kernel_sizes)
 
         self.hifi = upsampling_utils.HiFiUpsampling(
             resblock=hifi_resblock,
@@ -281,6 +282,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
         hifi_input_channels=128,
         hifi_conv_pre_kernel_size=1,
 
+        upsample_init_channels = 513,
         upsample_block_rates=[2],
         upsample_block_kernel_sizes=[4], 
 
@@ -313,6 +315,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             hifi_input_channels=hifi_input_channels,
             hifi_conv_pre_kernel_size=hifi_conv_pre_kernel_size,
 
+            upsample_init_channels=upsample_init_channels,
             upsample_block_rates=upsample_block_rates,
             upsample_block_kernel_sizes=upsample_block_kernel_sizes,
 
@@ -410,9 +413,9 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
 
         x = self.get_stft(padded_x)
         x = torch.abs(x)
+        x = self.upsampling_block(x)
 
         x = self.apply_spectralunet2(x)
-        x = self.upsampling_block(x)
         x = self.hifi(x)
         
         if self.use_waveunet and self.waveunet_before_spectralmasknet:
