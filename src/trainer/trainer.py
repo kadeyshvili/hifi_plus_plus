@@ -115,7 +115,7 @@ class Trainer(BaseTrainer):
             metrics.update(loss_name, batch[loss_name].item())
 
         if not self.is_train:
-            calculate_all_metrics(batch['generated_wav'], batch['wav_hr'], self.metrics["inference"])
+            calculate_all_metrics(batch['generated_wav'], batch['wav_hr'], self.metrics["inference"], self.config.datasets.val.initial_sr, self.config.datasets.val.target_sr)
 
         return batch
 

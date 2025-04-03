@@ -10,6 +10,7 @@ from pesq import pesq
 from pystoi import stoi
 from tqdm import tqdm
 from collections import defaultdict
+import torch.nn as nn
 
 # import log_utils
 from src.metrics.metric_denoising import composite_eval
@@ -187,22 +188,98 @@ class VGGDistance(Metric):
         self.result["std"].append(np.std(dist))
 
 
+
+class STFTMag(nn.Module):
+    def __init__(self, nfft=1024, hop=256):
+        super().__init__()
+        self.nfft = nfft
+        self.hop = hop
+        self.register_buffer('window', torch.hann_window(nfft), False)
+
+    @torch.no_grad()
+    def forward(self, x):
+        T = x.shape[-1]
+        stft = torch.stft(x, self.nfft, self.hop, window=self.window, return_complex=False)
+        mag = torch.norm(stft, p=2, dim=-1)
+        return mag
+
+
 class LSD(Metric):
     name = "LSD"
 
     def better(self, first, second):
         return first < second
+    def __call__(self, out_sig, ref_sig):
+        """
+        Compute LSD (log spectral distance)
+        Arguments:
+            out_sig: vector (torch.Tensor), enhanced signal [B,T]
+            ref_sig: vector (torch.Tensor), reference signal(ground truth) [B,T]
+        """
 
-    def __call__(self, samples, real_samples):
-        real_samples, samples = real_samples.squeeze(), samples.squeeze()
-        if real_samples.dim() == 1:
-            real_samples = real_samples[None]
-            samples = samples[None]
+        out_sig = out_sig.squeeze().cpu()
+        ref_sig = ref_sig.squeeze().cpu()
 
-        lsd = (samples - real_samples).square().mean(dim=1).sqrt()
+        stft = STFTMag(2048, 512)
+        sp = torch.log10(stft(ref_sig).square().clamp(1e-8))
+        st = torch.log10(stft(out_sig).square().clamp(1e-8))   
+        lsd = (sp - st).square().mean(dim=1).sqrt().mean()
         lsd = lsd.cpu().numpy()
         self.result["mean"].append(np.mean(lsd))
         self.result["std"].append(np.std(lsd))
+
+
+class LSD_LF(Metric):
+    name = "LSD_LF"
+
+    def better(self, first, second):
+        return first < second
+    def __call__(self, out_sig, ref_sig, initial_sr, target_sr):
+        """
+        Compute LSD (log spectral distance)
+        Arguments:
+            out_sig: vector (torch.Tensor), enhanced signal [B,T]
+            ref_sig: vector (torch.Tensor), reference signal(ground truth) [B,T]
+        """
+
+        out_sig = out_sig.squeeze().cpu()
+        ref_sig = ref_sig.squeeze().cpu()
+
+        stft = STFTMag(2048, 512)
+        hf = int(1025 * (initial_sr / target_sr))
+        sp = torch.log10(stft(ref_sig).square().clamp(1e-8))
+        st = torch.log10(stft(out_sig).square().clamp(1e-8))
+        lsd = (sp[:hf,:] - st[:hf,:]).square().mean(dim=1).sqrt().mean()
+        lsd = lsd.cpu().numpy()
+        self.result["mean"].append(np.mean(lsd))
+        self.result["std"].append(np.std(lsd))
+
+
+
+class LSD_HF(Metric):
+    name = "LSD_HF"
+
+    def better(self, first, second):
+        return first < second
+    def __call__(self, out_sig, ref_sig, initial_sr, target_sr):
+        """
+        Compute LSD (log spectral distance)
+        Arguments:
+            out_sig: vector (torch.Tensor), enhanced signal [B,T]
+            ref_sig: vector (torch.Tensor), reference signal(ground truth) [B,T]
+        """
+
+        out_sig = out_sig.squeeze().cpu()
+        ref_sig = ref_sig.squeeze().cpu()
+
+        stft = STFTMag(2048, 512)
+        hf = int(1025 * (initial_sr / target_sr))
+        sp = torch.log10(stft(ref_sig).square().clamp(1e-8))
+        st = torch.log10(stft(out_sig).square().clamp(1e-8))
+        lsd_hf = (sp[hf:,:] - st[hf:,:]).square().mean(dim=1).sqrt().mean()
+        lsd_hf = lsd_hf.cpu().numpy()
+        self.result["mean"].append(np.mean(lsd_hf))
+        self.result["std"].append(np.std(lsd_hf))
 
 
 class STOI(Metric):
@@ -315,7 +392,7 @@ class COVL(CSEMetric):
         self.func = lambda x, y: composite_eval(x, y)["covl"]
 
 
-def calculate_all_metrics(wavs, reference_wavs, metrics, n_max_files=None):
+def calculate_all_metrics(wavs, reference_wavs, metrics, initial_sr, target_sr,  n_max_files=None):
     scores = {metric.name: [] for metric in metrics}
     for x, y in tqdm(
         itertools.islice(zip(wavs, reference_wavs), n_max_files),
@@ -326,15 +403,15 @@ def calculate_all_metrics(wavs, reference_wavs, metrics, n_max_files=None):
         y = y.detach().cpu().numpy()
         x = x[0, :]
         y = y[0, :]
-        # to_crop = min(x.shape[1], y.shape[1])
-        # x = x[:, :to_crop]
-        # y = y[:, :to_crop]
         x = librosa.util.normalize(x[: min(len(x), len(y))])
         y = librosa.util.normalize(y[: min(len(x), len(y))])
         x = torch.from_numpy(x)[None, None]
         y = torch.from_numpy(y)[None, None]
         for metric in metrics:
-            metric.__call__(x, y)
+            if metric.name=='LSD_LF' or metric.name=='LSD_HF':
+                metric.__call__(x, y, initial_sr, target_sr)
+            else:
+                metric.__call__(x, y)
             scores[metric.name] += [np.mean(metric.result["mean"])]
     scores = {k: (np.mean(v), np.std(v)) for k, v in scores.items()}
     return scores
