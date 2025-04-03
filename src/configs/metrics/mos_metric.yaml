@@ -10,6 +10,10 @@ inference:
   #   name: "VGG_dist"
   - _target_: src.metrics.LSD
     name: "LSD"
+  - _target_: src.metrics.LSD_LF
+    name: "LSD_LF"
+  - _target_: src.metrics.LSD_HF
+    name: "LSD_HF"
   - _target_: src.metrics.STOI
     name: "STOI"
   - _target_: src.metrics.PESQ
