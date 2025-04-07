@@ -377,6 +377,36 @@ class MultiScaleResnet2d(nn.Module):
         return self.net(x1)[:, :, : x.shape[2]]
 
 
+    
+class ResBlock(nn.Module):
+    def __init__(self, channels, kernel_size, dilations, norm_type: Literal["weight", "spectral", "id"] = "weight",):
+        super().__init__()
+        self.norm = dict(weight=weight_norm, spectral=spectral_norm, id=lambda x: x)[norm_type]
+        self.blocks = nn.ModuleList(nn.ModuleList([None for _ in range(len(dilations[0]))]) for _ in range(len(dilations)))
+        for i in range(len(dilations)):
+            for j in range(len(dilations[0])):
+                self.blocks[i][j] = nn.Sequential(nn.LeakyReLU(0.1), self.norm(nn.Conv1d(in_channels=channels, out_channels=channels, \
+                                                                                    kernel_size=kernel_size, dilation=dilations[i][j],padding="same")))
+    
+    def forward(self, x):
+        for i in range(len(self.blocks)):
+            res = x
+            for j in range(len(self.blocks[i])):
+                x = self.blocks[i][j](x)
+            x = x + res
+        return x
+    
+class MRF(nn.Module):
+    def __init__(self, channels, kernel_sizes, dilations):
+        super().__init__()
+        self.res_blocks = nn.ModuleList([ResBlock(channels=channels, kernel_size=kernel_sizes[i], dilations=dilations[i]) \
+                                         for i in range(len(kernel_sizes))])
+
+    def forward(self, x):
+        result = self.res_blocks[0](x)
+        for block in self.res_blocks[1:]:
+            result += block(x)
+        return result
 
 class UpsampleTwice(torch.nn.Module):
     def __init__(
@@ -384,7 +414,9 @@ class UpsampleTwice(torch.nn.Module):
             initial_channels,
             upsample_rates, 
             upsample_kernel_sizes,
-            norm_type: Literal["weight", "spectral", "id"] = "id",
+            kernel_sizes_mrf,
+            dilations_mrf,
+            norm_type: Literal["weight", "spectral", "id"] = "weight",
     ):
         super().__init__()
         self.norm = dict(weight=weight_norm, spectral=spectral_norm, id=lambda x: x)[norm_type]
@@ -402,9 +434,17 @@ class UpsampleTwice(torch.nn.Module):
                     )
                 )
             )
+        kernel_sizes = kernel_sizes_mrf 
+        dilations = dilations_mrf 
+        self.mrfs = nn.ModuleList()
+        for _ in range(len(upsample_rates)):
+            self.mrfs.append(MRF(initial_channels, kernel_sizes, dilations))
+    
     def forward(self, x):
+        out = x
         for i in range(len(self.upsample_blocks)):
-            out = self.upsample_blocks[i](x)
+            out = self.upsample_blocks[i](out)
+            out = self.mrfs[i](out) 
         return out
 
 
