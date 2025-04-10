@@ -460,7 +460,7 @@ class FourierUnit(nn.Module):
 
         x = x.view(-1, x.size()[-1])
 
-        ffted = torch.stft(x, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window,
+        ffted = torch.stft(x, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window.to(x.device),
                           center=True, normalized=True, onesided=True, return_complex=False)
         ffted = ffted.permute(0, 3, 1, 2).contiguous()
         ffted = ffted.view((batch, -1,) + ffted.size()[2:])
@@ -472,7 +472,7 @@ class FourierUnit(nn.Module):
         real, imag = ffted[..., 0], ffted[..., 1]
         ffted_complex = torch.complex(real, imag)
 
-        output = torch.istft(ffted_complex, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window,
+        output = torch.istft(ffted_complex, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window.to(ffted_complex.device),
                             center=True, normalized=True, onesided=True)
 
         output = output.view(batch, -1, x.size()[-1])
