@@ -131,15 +131,13 @@ class HiFiPlusGenerator(torch.nn.Module):
         hifi_input_channels=128,
         hifi_conv_pre_kernel_size=1,
 
-        upsample_block_rates=[2],
-        upsample_init_channels = 513,
-        upsample_block_kernel_sizes=[4], 
-        kernel_sizes_mrf = [3, 5, 7],
-        dilations_mrf= [
-            [[1, 3, 5], [1, 3, 5]],
-            [[1, 3], [1, 3]],
-            [[1], [1]]
-        ],
+        upsample_block_rates=[2, 2],
+        upsample_init_channels = 1,
+        upsample_block_kernel_sizes=[4, 4], 
+
+
+        residual_channels=64,
+        bsft_channels=64,
 
         use_spectralunet=True,
         spectralunet_block_widths=(8, 16, 24, 32, 64),
@@ -168,8 +166,10 @@ class HiFiPlusGenerator(torch.nn.Module):
 
         self.use_skip_connect = use_skip_connect
         self.waveunet_before_spectralmasknet = waveunet_before_spectralmasknet
-        self.upsampling_block = upsampling_utils.UpsampleTwice(hifi_upsample_initial_channel, upsample_block_rates, \
-                                                               upsample_block_kernel_sizes, kernel_sizes_mrf, dilations_mrf)
+        self.upsampling_block1 = upsampling_utils.UpsampleTwice(upsample_init_channels, upsample_block_rates, upsample_block_kernel_sizes)
+        self.upsampling_block2 = upsampling_utils.UpsampleTwice(upsample_init_channels, upsample_block_rates, upsample_block_kernel_sizes)
+        self.nw_block1 = upsampling_utils.NewWaveBlock(residual_channels, bsft_channels)
+        self.nw_block2 = upsampling_utils.NewWaveBlock(residual_channels, bsft_channels)
 
         self.hifi = upsampling_utils.HiFiUpsampling(
             resblock=hifi_resblock,
@@ -289,15 +289,9 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
         hifi_input_channels=128,
         hifi_conv_pre_kernel_size=1,
 
-        upsample_init_channels = 513,
-        upsample_block_rates=[2],
-        upsample_block_kernel_sizes=[4], 
-        kernel_sizes_mrf = [3, 5, 7],
-        dilations_mrf= [
-            [[1, 3, 5], [1, 3, 5]],
-            [[1, 3], [1, 3]],
-            [[1], [1]]
-        ],
+        upsample_init_channels = 1,
+        upsample_block_rates=[2, 2],
+        upsample_block_kernel_sizes=[4, 4], 
 
         use_spectralunet=True,
         spectralunet_block_widths=(8, 16, 24, 32, 64),
@@ -331,8 +325,6 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             upsample_init_channels=upsample_init_channels,
             upsample_block_rates=upsample_block_rates,
             upsample_block_kernel_sizes=upsample_block_kernel_sizes,
-            kernel_sizes_mrf=kernel_sizes_mrf,
-            dilations_mrf=dilations_mrf,
 
             use_spectralunet=use_spectralunet,
             spectralunet_block_widths=spectralunet_block_widths,
@@ -411,26 +403,64 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
         closest_size = ((current_size + 1023) // 1024) * 1024
         pad_size =  closest_size - current_size
         padded_x = torch.nn.functional.pad(initial_x, (0, pad_size))
-        resampled_list = []
+        resampled_list_full = []
+        resampled_once = []
         for i in range(batch_size):
             x_single = padded_x[i].cpu().numpy()
-            x_resampled = librosa.resample(
+            x_resample_full = librosa.resample(
                 x_single, orig_sr=initial_sr, target_sr=target_sr, res_type="polyphase"
             )
-            target_length = x_single.shape[-1] * (target_sr // initial_sr)
-            if len(x_resampled) > target_length:
-                x_resampled = x_resampled[:target_length]
+            x_resampled_once = librosa.resample(
+                x_single, orig_sr=initial_sr, target_sr=target_sr // 2, res_type="polyphase"
+            )
+            target_length_full = x_single.shape[-1] * (target_sr // initial_sr)
+            if len(x_resample_full) > target_length_full:
+                x_resample_full = x_resample_full[:target_length_full]
+
+            target_length_once = x_single.shape[-1] * (target_sr // 2 // initial_sr)
+            if len(x_resampled_once) > target_length_once:
+                x_resampled_once = x_resampled_once[:target_length_once]
             
-            resampled_list.append(x_resampled)
+            resampled_list_full.append(x_resample_full)
+            resampled_once.append(x_resampled_once)
         
-        x_reference = np.stack(resampled_list)
+        x_reference = np.stack(resampled_list_full)
         x_reference = torch.tensor(x_reference, dtype=padded_x.dtype).to(x.device)
 
-        x = self.get_stft(padded_x)
+
+        x_half_resempled = np.stack(resampled_once)
+        x_half_resempled = torch.tensor(x_half_resempled, dtype=padded_x.dtype).to(x.device)
+
+        upsampled_x = self.upsampling_block1(padded_x)
+
+        highcut = initial_sr // 2
+        nyq = 0.5 * target_sr // 2
+        hi = highcut / nyq
+        fft_size = 1024 // 2 + 1
+        band4_8 = torch.zeros(fft_size, dtype=torch.float)
+        band4_8[:int(hi * fft_size)] = 1
+        band4_8 = band4_8.unsqueeze(0).unsqueeze(0) 
+        band4_8 = band4_8.repeat(batch_size, 2, 1).to(upsampled_x.device)
+        x_4_8 = self.nw_block1(upsampled_x, x_half_resempled, band4_8)
+
+
+        upsampled_x_4 = self.upsampling_block2(x_4_8)
+        highcut = initial_sr // 2 * 2
+        nyq = 0.5 * target_sr
+        hi = highcut / nyq
+        fft_size = 1024 // 2 + 1
+        band8_16 = torch.zeros(fft_size, dtype=torch.float)
+        band8_16[:int(hi * fft_size)] = 1
+        band8_16 = band8_16.unsqueeze(0).unsqueeze(0) 
+        band8_16 = band8_16.repeat(batch_size, 2, 1).to(upsampled_x.device)
+
+        x_8_16 = self.nw_block2(upsampled_x_4, x_reference, band8_16)
+
+
+        x = self.get_stft(x_8_16)
         x = torch.abs(x)
 
         x = self.apply_spectralunet2(x)
-        x = self.upsampling_block(x)
         x = self.hifi(x)
         
         if self.use_waveunet and self.waveunet_before_spectralmasknet:

@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.nn.utils import weight_norm, spectral_norm
 from librosa.filters import mel as librosa_mel_fn
 from typing import Literal, List
+from math import sqrt, log
 
 
 
@@ -377,36 +378,6 @@ class MultiScaleResnet2d(nn.Module):
         return self.net(x1)[:, :, : x.shape[2]]
 
 
-    
-class ResBlock(nn.Module):
-    def __init__(self, channels, kernel_size, dilations, norm_type: Literal["weight", "spectral", "id"] = "weight",):
-        super().__init__()
-        self.norm = dict(weight=weight_norm, spectral=spectral_norm, id=lambda x: x)[norm_type]
-        self.blocks = nn.ModuleList(nn.ModuleList([None for _ in range(len(dilations[0]))]) for _ in range(len(dilations)))
-        for i in range(len(dilations)):
-            for j in range(len(dilations[0])):
-                self.blocks[i][j] = nn.Sequential(nn.LeakyReLU(0.1), self.norm(nn.Conv1d(in_channels=channels, out_channels=channels, \
-                                                                                    kernel_size=kernel_size, dilation=dilations[i][j],padding="same")))
-    
-    def forward(self, x):
-        for i in range(len(self.blocks)):
-            res = x
-            for j in range(len(self.blocks[i])):
-                x = self.blocks[i][j](x)
-            x = x + res
-        return x
-    
-class MRF(nn.Module):
-    def __init__(self, channels, kernel_sizes, dilations):
-        super().__init__()
-        self.res_blocks = nn.ModuleList([ResBlock(channels=channels, kernel_size=kernel_sizes[i], dilations=dilations[i]) \
-                                         for i in range(len(kernel_sizes))])
-
-    def forward(self, x):
-        result = self.res_blocks[0](x)
-        for block in self.res_blocks[1:]:
-            result += block(x)
-        return result
 
 class UpsampleTwice(torch.nn.Module):
     def __init__(
@@ -414,9 +385,7 @@ class UpsampleTwice(torch.nn.Module):
             initial_channels,
             upsample_rates, 
             upsample_kernel_sizes,
-            kernel_sizes_mrf,
-            dilations_mrf,
-            norm_type: Literal["weight", "spectral", "id"] = "weight",
+            norm_type: Literal["weight", "spectral", "id"] = "id",
     ):
         super().__init__()
         self.norm = dict(weight=weight_norm, spectral=spectral_norm, id=lambda x: x)[norm_type]
@@ -434,17 +403,152 @@ class UpsampleTwice(torch.nn.Module):
                     )
                 )
             )
-        kernel_sizes = kernel_sizes_mrf 
-        dilations = dilations_mrf 
-        self.mrfs = nn.ModuleList()
-        for _ in range(len(upsample_rates)):
-            self.mrfs.append(MRF(initial_channels, kernel_sizes, dilations))
-    
     def forward(self, x):
         out = x
         for i in range(len(self.upsample_blocks)):
             out = self.upsample_blocks[i](out)
-            out = self.mrfs[i](out) 
+        return out
+
+Linear = nn.Linear
+silu = F.silu
+relu = F.relu
+
+def Conv1d(*args, **kwargs):
+    layer = nn.Conv1d(*args, **kwargs)
+    nn.init.kaiming_normal_(layer.weight)
+    return layer
+
+def Conv2d(*args, **kwargs):
+    layer = nn.Conv2d(*args, **kwargs)
+    nn.init.kaiming_normal_(layer.weight)
+    return layer
+
+
+class BSFT(nn.Module):
+    def __init__(self, nhidden, out_channels):
+        super().__init__()
+        self.mlp_shared = nn.Conv1d(2, nhidden, kernel_size=3, padding=1)
+
+        self.mlp_gamma = Conv1d(nhidden, out_channels, kernel_size=3, padding=1)
+        self.mlp_beta = Conv1d(nhidden, out_channels, kernel_size=3, padding=1)
+
+    def forward(self, x, band):
+        actv = silu(self.mlp_shared(band))
+
+        gamma = self.mlp_gamma(actv).unsqueeze(-1)
+        beta = self.mlp_beta(actv).unsqueeze(-1)
+        out = x * (1 + gamma) + beta
+
+        return out
+    
+
+
+class FourierUnit(nn.Module):
+    def __init__(self, in_channels, out_channels, bsft_channels):
+        super(FourierUnit, self).__init__()
+
+        self.conv_layer = Conv2d(in_channels=in_channels * 2, out_channels=out_channels * 2,
+                                 kernel_size=1, padding=0, bias=False)
+        self.bsft = BSFT(bsft_channels, out_channels * 2)
+        self.n_fft=1024
+        self.hop_size=256
+        self.win_size=1024
+        self.hann_window=torch.hann_window(self.win_size)
+
+    def forward(self, x, band):
+        batch = x.shape[0]
+
+        x = x.view(-1, x.size()[-1])
+
+        ffted = torch.stft(x, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window,
+                          center=True, normalized=True, onesided=True, return_complex=False)
+        ffted = ffted.permute(0, 3, 1, 2).contiguous()
+        ffted = ffted.view((batch, -1,) + ffted.size()[2:])
+
+        ffted = relu(self.bsft(ffted, band))
+        ffted = self.conv_layer(ffted)
+
+        ffted = ffted.view((-1, 2,) + ffted.size()[2:]).permute(0, 2, 3, 1).contiguous()
+        real, imag = ffted[..., 0], ffted[..., 1]
+        ffted_complex = torch.complex(real, imag)
+
+        output = torch.istft(ffted_complex, self.n_fft, hop_length=self.hop_size, win_length=self.win_size, window=self.hann_window,
+                            center=True, normalized=True, onesided=True)
+
+        output = output.view(batch, -1, x.size()[-1])
+        return output
+
+class SpectralTransform(nn.Module):
+    def __init__(self, in_channels, out_channels, bsft_channels):
+        super(SpectralTransform, self).__init__()
+        self.conv1 = Conv1d(
+            in_channels, out_channels // 2, kernel_size=1, bias=False)
+
+        self.fu = FourierUnit(out_channels // 2, out_channels // 2, bsft_channels)
+
+        self.conv2 = Conv1d(
+            out_channels // 2, out_channels, kernel_size=1, bias=False)
+
+    def forward(self, x, band):
+        x = silu(self.conv1(x))
+        output = self.fu(x, band)
+        output = self.conv2(x + output)
+
+        return output
+    
+
+class FFC(nn.Module):
+    def __init__(self, in_channels, out_channels, bsft_channels, kernel_size=3,
+                 ratio_gin=0.5, ratio_gout=0.5, padding=1):
+        super(FFC, self).__init__()
+
+        in_cg = int(in_channels * ratio_gin)
+        in_cl = in_channels - in_cg
+        out_cg = int(out_channels * ratio_gout)
+        out_cl = out_channels - out_cg
+
+        self.ratio_gin = ratio_gin
+        self.ratio_gout = ratio_gout
+        self.global_in_num = in_cg
+
+        self.convl2l = Conv1d(in_cl, out_cl, kernel_size, padding=padding, bias=False)
+        self.convl2g = Conv1d(in_cl, out_cg, kernel_size, padding=padding, bias=False)
+        self.convg2l = Conv1d(in_cg, out_cl, kernel_size, padding=padding, bias=False)
+        self.convg2g = SpectralTransform(in_cg, out_cg, bsft_channels)
+
+    def forward(self, x_l, x_g, band):
+        out_xl = self.convl2l(x_l) + self.convg2l(x_g)
+        out_xg = self.convl2g(x_l) + self.convg2g(x_g, band)
+
+        return out_xl, out_xg
+
+
+class NewWaveBlock(nn.Module):
+    def __init__(self, residual_channels, bsft_channels,):
+        super().__init__()
+        self.input_projection = Conv1d(2, residual_channels, 1)
+        self.ffc1 = FFC(residual_channels, 2*residual_channels, bsft_channels, kernel_size=3, ratio_gin=0.5, ratio_gout=0.5, padding=1) # STFC
+
+        self.output_projection = Conv1d(residual_channels, 2 * residual_channels, 1)
+        self.output_projectio2 = Conv1d(residual_channels, 1, 1)
+
+
+    def forward(self, initial_x, reference_x, band):
+        initial_x = initial_x.squeeze(1)
+        reference_x = reference_x.squeeze(1)
+        x = torch.stack((initial_x, reference_x), dim=1)
+
+        x = self.input_projection(x)
+
+        y_l, y_g = torch.split(x, [x.shape[1] - self.ffc1.global_in_num, self.ffc1.global_in_num], dim=1)
+        y_l, y_g = self.ffc1(y_l, y_g, band)
+        gate_l, filter_l = torch.chunk(y_l, 2, dim=1)
+        gate_g, filter_g = torch.chunk(y_g, 2, dim=1)
+        gate, filter = torch.cat((gate_l, gate_g), dim=1), torch.cat((filter_l, filter_g), dim=1)
+        y = torch.sigmoid(gate) * torch.tanh(filter)
+        y = self.output_projection(y)
+        residual, skip = torch.chunk(y, 2, dim=1)
+        out = self.output_projectio2(residual)
         return out
 
 
