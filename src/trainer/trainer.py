@@ -117,7 +117,7 @@ class Trainer(BaseTrainer):
 
         if not self.is_train:
             # for i in range(len(self.metrics["inference"])):
-            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"], self.config.datasets.val.initial_sr, self.config.datasets.val.target_sr)
+            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"], self.config.datasets.val.sampling_rate, self.config.datasets.val.input_freq)
             # for metric in self.metrics["inference"]:
 
             # self.metrics["inference"][i](batch['generated_wav'], batch['initial_len'])
@@ -160,8 +160,9 @@ class Trainer(BaseTrainer):
 
 
     def log_spectrogram(self, melspec,  mel_spec_fake, partition, idx, **batch):
-        spectrogram_for_plot_real = melspec[0].detach().cpu()
-        spectrogram_for_plot_fake = mel_spec_fake[0].detach().cpu()
+
+        spectrogram_for_plot_real = melspec[0].detach().cpu()[:, :batch['initial_melspec_len'][0]]
+        spectrogram_for_plot_fake = mel_spec_fake[0].detach().cpu()[:, :batch['initial_melspec_len'][0]]
         if partition != 'val':
             image = plot_spectrogram(spectrogram_for_plot_real)
             self.writer.add_image("melspectrogram_real", image)

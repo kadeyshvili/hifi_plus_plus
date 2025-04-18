@@ -1,5 +1,5 @@
 from torch import nn, einsum
-from einops import rearrange
+# from einops import rearrange
 
 
 class Attention(nn.Module):
@@ -21,14 +21,14 @@ class Attention(nn.Module):
     def forward(self, x):
         b, n, _, h = *x.shape, self.heads
         qkv = self.to_qkv(x).chunk(3, dim = -1)
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
+        # q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), qkv)
 
         dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
 
         attn = dots.softmax(dim=-1)
 
         out = einsum('b h i j, b h j d -> b h i d', attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
+        # out = rearrange(out, 'b h n d -> b n (h d)')
         out =  self.to_out(out)
         return out
 

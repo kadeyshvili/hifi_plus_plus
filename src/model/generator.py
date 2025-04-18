@@ -334,27 +334,11 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
         return x
 
     def forward(self, x):
-        print('x shape', x.shape)
-        # torch.Size([4, 1, 76527]) - right
-        # torch.Size([4, 1, 66230]) - what i get
         x_orig = x.clone()
         x_orig = x_orig[:, :, : x_orig.shape[2] // 1024 * 1024]
 
-        print('x_orig', x_orig.shape)
-        # x_orig torch.Size([4, 1, 75776]) - right
-        # x_orig torch.Size([4, 1, 65536]) - what i get 
-
         x = self.get_melspec(x_orig)
-        print('++++++++++++++++++++++++++++++++++++')
-        print(x.shape)
-        # torch.Size([4, 80, 296]) - right
-        # torch.Size([4, 80, 256]) - what i get 
         x = self.apply_spectralunet(x)
-        print('----------------------------------------------------')
-        #torch.Size([4, 512, 128]) - new
-        # torch.Size([4, 128, 296]) - right
-        print(x.shape)
-        print('=====================================================')
         x = self.hifi(x)
         if self.use_waveunet and self.waveunet_before_spectralmasknet:
             x = self.apply_waveunet_a2a(x, x_orig)

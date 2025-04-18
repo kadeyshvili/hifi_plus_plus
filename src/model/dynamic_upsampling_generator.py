@@ -412,8 +412,6 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
         x = self.hifi(x)
         
         if self.use_waveunet and self.waveunet_before_spectralmasknet:
-            print(x_reference.shape[-1])
-            print(x.shape[-1])
             x = self.apply_waveunet_a2a(x, x_reference[..., :x.shape[-1]])
         if self.use_spectralmasknet:
             x = self.apply_spectralmasknet(x)
