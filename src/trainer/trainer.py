@@ -159,8 +159,8 @@ class Trainer(BaseTrainer):
 
 
     def log_spectrogram(self, melspec_lr, melspec_hr,  mel_spec_fake, partition, idx, **batch):
-        spectrogram_for_plot_real_lr = melspec_lr[0].detach().cpu()
-        spectrogram_for_plot_real_hr = melspec_hr[0].detach().cpu()
+        spectrogram_for_plot_real_lr = melspec_lr[0].detach().cpu()[:, :batch['initial_len_melspec_lr'][0]]
+        spectrogram_for_plot_real_hr = melspec_hr[0].detach().cpu()[:, :batch['initial_len_melspec_hr'][0]]
         spectrogram_for_plot_fake = mel_spec_fake[0].detach().cpu()
         image = plot_spectrogram(spectrogram_for_plot_real_lr)
         self.writer.add_image("melspectrogram_real_lr", image)
@@ -168,4 +168,3 @@ class Trainer(BaseTrainer):
         self.writer.add_image("melspectrogram_real_hr", image_hr)
         image_fake = plot_spectrogram(spectrogram_for_plot_fake)
         self.writer.add_image("melspectrogram_fake", image_fake)
-

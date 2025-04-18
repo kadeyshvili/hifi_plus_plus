@@ -15,7 +15,7 @@ def get_dataset_filelist(dataset_split_file, input_wavs_dir):
 
 
 
-def split_audios(audios_lr, audios_hr, segment_size, split):
+def split_audios(audios_lr, audios_hr, segment_size, split, lr, hr):
     audios_lr = [torch.FloatTensor(audio).unsqueeze(0) for audio in audios_lr]
     audios_hr = [torch.FloatTensor(audio).unsqueeze(0) for audio in audios_hr]
     if split:
@@ -23,10 +23,10 @@ def split_audios(audios_lr, audios_hr, segment_size, split):
             max_audio_start = audios_lr[0].size(1) - segment_size
             audio_start = random.randint(0, max_audio_start)
             audios_lr = [audio[:, audio_start : audio_start + segment_size] for audio in audios_lr]
-            audios_hr = [audio[:, audio_start : audio_start + segment_size] for audio in audios_hr]
+            audios_hr = [audio[:, audio_start : audio_start + segment_size * (hr // lr)] for audio in audios_hr]
         else:
             audios_lr = [torch.nn.functional.pad(audio,(0, segment_size - audio.size(1)),"constant",) for audio in audios_lr]
-            audios_hr = [torch.nn.functional.pad(audio,(0, segment_size - audio.size(1)),"constant",) for audio in audios_hr]
+            audios_hr = [torch.nn.functional.pad(audio,(0, (hr // lr) * segment_size - audio.size(1)),"constant",) for audio in audios_hr]
     audios_lr = [audio.squeeze(0).numpy() for audio in audios_lr]
     audios_hr = [audio.squeeze(0).numpy() for audio in audios_hr]
     return audios_lr, audios_hr
@@ -63,7 +63,7 @@ class VCTKDataset(BaseDataset):
         vctk_audio_lr = librosa.load(vctk_fn_lr, sr=self.initial_sr, res_type="polyphase",)[0]
         vctk_audio_hr = librosa.load(vctk_fn_hr, sr=self.target_sr, res_type="polyphase",)[0]
 
-        (vctk_audio_lr,), (vctk_audio_hr, ) = split_audios([vctk_audio_lr], [vctk_audio_hr], self.segment_size, self.split)
+        (vctk_audio_lr,), (vctk_audio_hr, ) = split_audios([vctk_audio_lr], [vctk_audio_hr], self.segment_size, self.split, self.initial_sr, self.target_sr)
 
         input_audio_lr = normalize(vctk_audio_lr)[None] * 0.95
         input_audio_hr = normalize(vctk_audio_hr)[None] * 0.95
@@ -80,5 +80,4 @@ class VCTKDataset(BaseDataset):
 
     def __len__(self):
         return len(self.audio_files_lr)
-
 
