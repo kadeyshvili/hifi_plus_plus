@@ -46,7 +46,7 @@ class Trainer(BaseTrainer):
         target_wav = batch['wav_hr']
         initial_sr = self.config.datasets.train.initial_sr
         target_sr = self.config.datasets.train.target_sr
-        wav_fake = self.model.generator(initial_wav, initial_sr, target_sr)
+        wav_fake = self.model.generator(initial_wav, target_wav, initial_sr, target_sr)
  
         if target_wav.shape != wav_fake.shape:
             wav_fake = torch.stack([F.pad(wav, (0, target_wav.shape[2] - wav_fake.shape[2]), value=0) for wav in wav_fake])
@@ -159,8 +159,8 @@ class Trainer(BaseTrainer):
 
 
     def log_spectrogram(self, melspec_lr, melspec_hr,  mel_spec_fake, partition, idx, **batch):
-        spectrogram_for_plot_real_lr = melspec_lr[0].detach().cpu()
-        spectrogram_for_plot_real_hr = melspec_hr[0].detach().cpu()
+        spectrogram_for_plot_real_lr = melspec_lr[0].detach().cpu()[:, :batch['initial_len_melspec_lr'][0]]
+        spectrogram_for_plot_real_hr = melspec_hr[0].detach().cpu()[:, :batch['initial_len_melspec_hr'][0]]
         spectrogram_for_plot_fake = mel_spec_fake[0].detach().cpu()
         image = plot_spectrogram(spectrogram_for_plot_real_lr)
         self.writer.add_image("melspectrogram_real_lr", image)

@@ -394,7 +394,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             x += self.waveunet_skip_connect(x_a)
         return x
 
-    def forward(self, x, initial_sr, target_sr):
+    def forward(self, x, x_reference, initial_sr, target_sr):
         initial_x = x.clone()
         batch_size = x.shape[0]
 
@@ -407,25 +407,17 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
         resampled_once = []
         for i in range(batch_size):
             x_single = padded_x[i].cpu().numpy()
-            x_resample_full = librosa.resample(
-                x_single, orig_sr=initial_sr, target_sr=target_sr, res_type="polyphase"
-            )
             x_resampled_once = librosa.resample(
                 x_single, orig_sr=initial_sr, target_sr=target_sr // 2, res_type="polyphase"
             )
-            target_length_full = x_single.shape[-1] * (target_sr // initial_sr)
-            if len(x_resample_full) > target_length_full:
-                x_resample_full = x_resample_full[:target_length_full]
 
             target_length_once = x_single.shape[-1] * (target_sr // 2 // initial_sr)
             if len(x_resampled_once) > target_length_once:
                 x_resampled_once = x_resampled_once[:target_length_once]
             
-            resampled_list_full.append(x_resample_full)
             resampled_once.append(x_resampled_once)
         
-        x_reference = np.stack(resampled_list_full)
-        x_reference = torch.tensor(x_reference, dtype=padded_x.dtype).to(x.device)
+        x_reference = x_reference.to(x.device)
 
 
         x_half_resempled = np.stack(resampled_once)
