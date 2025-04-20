@@ -84,7 +84,7 @@ class Inferencer(BaseTrainer):
 
         if not skip_model_load:
             # init model
-            self._from_pretrained(config.inferencer.get("from_pretrained"), config.inferencer.get("custom"))
+            self._from_pretrained(config.inferencer.get("from_pretrained"))
 
     def run_inference(self):
         """
@@ -126,14 +126,14 @@ class Inferencer(BaseTrainer):
         # and task pipeline
 
         batch = self.move_batch_to_device(batch)
-        batch = self.transform_batch(batch)  # transform batch on device -- faster
+        # batch = self.transform_batch(batch)  # transform batch on device -- faster
 
-        generated_wavs = self.model.generator(batch['wav_lr'])
+        generated_wavs = self.model.generator(batch['wav_lr'], batch['wav_hr'], self.config.datasets.test.initial_sr, self.config.datasets.test.target_sr)
         batch['generated_wav'] = generated_wavs
 
 
         if metrics is not None:
-            calculate_all_metrics(batch['generated_wav'], batch['wav_hr'], self.metrics["inference"])
+            calculate_all_metrics(batch['generated_wav'], batch['wav_hr'], self.metrics["inference"], self.config.datasets.test.initial_sr, self.config.datasets.test.target_sr)
             for met in self.metrics["inference"]:
                 metrics.update(met.name, np.mean(met.result['mean']))
                 # met.result['mean'] = []
@@ -148,7 +148,7 @@ class Inferencer(BaseTrainer):
             # clone because of
             # https://github.com/pytorch/pytorch/issues/1995
             generated_wavs = batch["generated_wav"][i].detach().clone()
-            path_to_save =  batch["path_hr"][i]
+            path_to_save =  batch["paths_hr"][i]
 
             if self.save_path is not None:
                 # you can use safetensors or other lib here

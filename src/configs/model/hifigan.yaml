@@ -9,8 +9,8 @@ generator_config:
   hifi_input_channels: 128
   hifi_conv_pre_kernel_size: 1
 
-  upsample_block_rates: [2, 2]
-  upsample_block_kernel_sizes: [4, 4]
+  upsample_block_rates: [2]
+  upsample_block_kernel_sizes: [4]
 
   use_spectralunet: True
   spectralunet_block_widths: [8, 16, 24, 32, 64]
@@ -21,7 +21,7 @@ generator_config:
   waveunet_block_widths: [10, 20, 40, 80]
   waveunet_block_depth: 4
 
-  use_spectralmasknet: True
+  use_spectralmasknet: False
   spectralmasknet_block_widths: [8, 12, 24, 32]
   spectralmasknet_block_depth: 4
 
