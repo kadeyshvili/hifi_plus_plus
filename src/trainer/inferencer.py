@@ -84,7 +84,7 @@ class Inferencer(BaseTrainer):
 
         if not skip_model_load:
             # init model
-            self._from_pretrained(config.inferencer.get("from_pretrained"), config.inferencer.get("custom"))
+            self._from_pretrained(config.inferencer.get("from_pretrained"))
 
     def run_inference(self):
         """
