@@ -425,28 +425,52 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
 
         upsampled_x = self.upsampling_block1(padded_x)
 
-        highcut = initial_sr // 2
-        nyq = 0.5 * target_sr // 2
-        hi = highcut / nyq
-        fft_size = 1024 // 2 + 1
-        band4_8 = torch.zeros(fft_size, dtype=torch.float)
-        band4_8[:int(hi * fft_size)] = 1
-        band4_8 = band4_8.unsqueeze(0).unsqueeze(0) 
-        band4_8 = band4_8.repeat(batch_size, 2, 1).to(upsampled_x.device)
-        x_4_8 = self.nw_block1(upsampled_x, x_half_resempled, band4_8)
+
+        if initial_sr==4000 and target_sr==16000:
+
+            highcut = initial_sr // 2
+            nyq = 0.5 * target_sr // 2
+            hi = highcut / nyq
+            fft_size = 1024 // 2 + 1
+            band4_8 = torch.zeros(fft_size, dtype=torch.float)
+            band4_8[:int(hi * fft_size)] = 1
+            band4_8 = band4_8.unsqueeze(0).unsqueeze(0) 
+            band4_8 = band4_8.repeat(batch_size, 2, 1).to(upsampled_x.device)
+            x_4_8 = self.nw_block1(upsampled_x, x_half_resempled, band4_8)
 
 
-        upsampled_x_4 = self.upsampling_block2(x_4_8)
-        highcut = initial_sr // 2 * 2
-        nyq = 0.5 * target_sr
-        hi = highcut / nyq
-        fft_size = 1024 // 2 + 1
-        band8_16 = torch.zeros(fft_size, dtype=torch.float)
-        band8_16[:int(hi * fft_size)] = 1
-        band8_16 = band8_16.unsqueeze(0).unsqueeze(0) 
-        band8_16 = band8_16.repeat(batch_size, 2, 1).to(upsampled_x.device)
+            upsampled_x_4 = self.upsampling_block2(x_4_8)
+            highcut = initial_sr // 2 * 2
+            nyq = 0.5 * target_sr
+            hi = highcut / nyq
+            fft_size = 1024 // 2 + 1
+            band8_16 = torch.zeros(fft_size, dtype=torch.float)
+            band8_16[:int(hi * fft_size)] = 1
+            band8_16 = band8_16.unsqueeze(0).unsqueeze(0) 
+            band8_16 = band8_16.repeat(batch_size, 2, 1).to(upsampled_x.device)
+            x_8_16 = self.nw_block2(upsampled_x_4, x_reference, band8_16)
 
-        x_8_16 = self.nw_block2(upsampled_x_4, x_reference, band8_16)
+        elif initial_sr==4000 and target_sr==8000:
+            highcut = initial_sr // 2
+            nyq = 0.5 * target_sr // 2
+            hi = highcut / nyq
+            fft_size = 1024 // 2 + 1
+            band4_8 = torch.zeros(fft_size, dtype=torch.float)
+            band4_8[:int(hi * fft_size)] = 1
+            band4_8 = band4_8.unsqueeze(0).unsqueeze(0) 
+            band4_8 = band4_8.repeat(batch_size, 2, 1).to(upsampled_x.device)
+            x_8_16 = self.nw_block1(upsampled_x, x_reference, band4_8)
+
+        elif initial_sr==8000 and target_sr==16000:
+            highcut = initial_sr // 2 * 2
+            nyq = 0.5 * target_sr
+            hi = highcut / nyq
+            fft_size = 1024 // 2 + 1
+            band8_16 = torch.zeros(fft_size, dtype=torch.float)
+            band8_16[:int(hi * fft_size)] = 1
+            band8_16 = band8_16.unsqueeze(0).unsqueeze(0) 
+            band8_16 = band8_16.repeat(batch_size, 2, 1).to(upsampled_x.device)
+            x_8_16 = self.nw_block2(upsampled_x, x_reference, band8_16)
 
 
         x = self.get_stft(x_8_16)
