@@ -1,0 +1,13 @@
+defaults:
+  - model: hifigan
+  - metrics: mos_metric
+  - datasets: config_for_test
+  - dataloader: test_loader
+  - transforms: no_transforms
+  - _self_
+inferencer:
+  device_tensors: ["wav", "melspec"]
+  device: auto
+  save_path: "inference_dir"
+  seed: 1
+  from_pretrained: "/Users/polinakadeyshvili/saved_dir/classic_hifi/model_best.pth"
