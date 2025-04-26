@@ -136,7 +136,7 @@ class Inferencer(BaseTrainer):
 
 
         if metrics is not None:
-            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"])
+            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"], self.config.datasets.test.input_freq, self.config.datasets.test.sampling_rate)
             for met in self.metrics["inference"]:
                 metrics.update(met.name, np.mean(met.result['mean']))
                 # met.result['mean'] = []

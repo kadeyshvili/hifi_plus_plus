@@ -117,7 +117,7 @@ class Trainer(BaseTrainer):
 
         if not self.is_train:
             # for i in range(len(self.metrics["inference"])):
-            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"], self.config.datasets.val.sampling_rate, self.config.datasets.val.input_freq)
+            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"], self.config.datasets.val.input_freq, self.config.datasets.val.sampling_rate)
             # for metric in self.metrics["inference"]:
 
             # self.metrics["inference"][i](batch['generated_wav'], batch['initial_len'])
