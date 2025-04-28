@@ -9,7 +9,7 @@ from src.datasets.data_utils import inf_loop
 from src.metrics.tracker import MetricTracker
 from src.utils.io_utils import ROOT_PATH
 from src.model.melspec import  MelSpectrogram
-# from src.metrics.calculate_mos import MosMetric
+from src.metrics.calculate_metrics import calculate_all_metrics
 import pandas as pd
 import numpy as np
 
@@ -80,7 +80,8 @@ class BaseTrainer:
         self.gen_lr_scheduler = gen_lr_scheduler
         self.disc_lr_scheduler = disc_lr_scheduler
         self.batch_transforms = batch_transforms
-        self.create_mel_spec = MelSpectrogram(sr=config.datasets.train.target_sr).to(self.device)
+        self.create_mel_spec_8_16 = MelSpectrogram(sr=16000).to(self.device)
+        self.create_mel_spec_4_8 = MelSpectrogram(sr=8000).to(self.device)
         # define dataloaders
         self.train_dataloader = dataloaders["train"]
         if epoch_len is None:
@@ -186,6 +187,7 @@ class BaseTrainer:
 
             # evaluate model performance according to configured metric,
             # save best checkpoint as model_best
+            self.train_metrics.reset(preserve_metrics=False)
             best, stop_process, not_improved_count = self._monitor_performance(
                 logs, not_improved_count
             )
@@ -237,11 +239,18 @@ class BaseTrainer:
             # log current results
             if batch_idx % self.log_step == 0:
                 self.writer.set_step((epoch - 1) * self.epoch_len + batch_idx)
-                self.logger.debug(
-                    "Train Epoch: {} {} Generator Loss: {:.6f}, Discriminator Loss: {:.6f}".format(
-                        epoch, self._progress(batch_idx), batch["gen_loss"].item(), batch['disc_loss'].item()
+                if batch['initial_sr'] == 4000 and batch['target_sr'] == 8000:
+                    self.logger.debug(
+                        "Train Epoch: {} {} Generator Loss_4_8: {:.6f}, Discriminator Loss_4_8: {:.6f}".format(
+                            epoch, self._progress(batch_idx), batch["gen_loss_4_8"].item(), batch['disc_loss_4_8'].item()
+                        )
                     )
-                )
+                elif batch['initial_sr'] == 8000 and batch['target_sr'] == 16000:
+                    self.logger.debug(
+                        "Train Epoch: {} {} Generator Loss_8_16: {:.6f}, Discriminator Loss_8_16: {:.6f}".format(
+                            epoch, self._progress(batch_idx), batch["gen_loss_8_16"].item(), batch['disc_loss_8_16'].item()
+                        )
+                    )
                 self.writer.add_scalar(
                     "learning_rate_generator", self.gen_lr_scheduler.get_last_lr()[0]
                 )
@@ -253,7 +262,7 @@ class BaseTrainer:
                 # we don't want to reset train metrics at the start of every epoch
                 # because we are interested in recent train metrics
                 last_train_metrics = self.train_metrics.result()
-                self.train_metrics.reset()
+                self.train_metrics.reset(preserve_metrics=True)
             if batch_idx + 1 >= self.epoch_len:
                 break
         self.gen_lr_scheduler.step()
@@ -310,9 +319,79 @@ class BaseTrainer:
             self.metrics['inference'][i].result['std'] = []
 
         self._log_scalars(self.evaluation_metrics)
+        return self.evaluation_metrics.result()
+    def _evaluation_epoch(self, epoch, part, dataloader):
+        """
+        Evaluate model on the partition after training for an epoch.
+        """
+        self.is_train = False
+        self.model.generator.eval()
+        self.model.mpd.eval()
+        self.model.msd.eval()
+        self.evaluation_metrics.reset()
+        self.writer.mode = part
+        metrics_4_8 = {}
+        metrics_8_16 = {}
         
+        with torch.no_grad():
+            for batch_idx, batch in tqdm(
+                enumerate(dataloader),
+                desc=part,
+                total=len(dataloader),
+            ):
+                batch = self.process_batch(
+                    batch,
+                    metrics=self.evaluation_metrics,
+                )
+                for key in self.config.writer.loss_names:
+                    if key in batch:
+                        self.evaluation_metrics.update(key, batch[key].item())
+                initial_sr = batch['initial_sr']
+                target_sr = batch['target_sr']
+                if initial_sr == 4000 and target_sr == 8000:
+                    batch_metrics = calculate_all_metrics(
+                        batch['generated_wav'], 
+                        batch['wav_hr'],
+                        self.metrics['inference'], 
+                        initial_sr, 
+                        target_sr
+                    )
+                    for k, (mean, std) in batch_metrics.items():
+                        if k in metrics_4_8:
+                            metrics_4_8[k].append(mean)
+                        else:
+                            metrics_4_8[k] = [mean]
+                    
+                elif initial_sr == 8000 and target_sr == 16000:
+                    batch_metrics = calculate_all_metrics(
+                        batch['generated_wav'], 
+                        batch['wav_hr'],
+                        self.metrics['inference'], 
+                        initial_sr, 
+                        target_sr
+                    )
+                    for k, (mean, std) in batch_metrics.items():
+                        if k in metrics_8_16:
+                            metrics_8_16[k].append(mean)
+                        else:
+                            metrics_8_16[k] = [mean]
+                
+                if self.config.dataloader[part].batch_size == 1:
+                    self._log_batch(batch_idx, batch, part)
+                    
+            self.writer.set_step(epoch * self.epoch_len, part)
+            if self.config.dataloader[part].batch_size != 1:
+                self._log_batch(batch_idx, batch, part)
         
+        for k, values in metrics_4_8.items():
+            mean_val = np.mean(values)
+            self.evaluation_metrics.update(k, mean_val)
 
+        for k, values in metrics_8_16.items():
+            mean_val = np.mean(values)
+            self.evaluation_metrics.update(k, mean_val)
+        
+        self._log_scalars(self.evaluation_metrics)
         return self.evaluation_metrics.result()
 
     def _monitor_performance(self, logs, not_improved_count):

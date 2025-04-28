@@ -30,7 +30,11 @@ def collate_fn(dataset_items: list[dict]):
     initial_lens_hr = []
     initial_len_melspec_lr = []
     initial_len_melspec_hr = []
+    initial_sr = 0
+    target_sr = 0
     for item in dataset_items:
+        initial_sr = item['initial_sr']
+        target_sr = item['target_sr']
         paths_lr.append(item['path_lr'])
         paths_hr.append(item['path_hr'])
         all_wavs_lr.append(item['wav_lr'].squeeze(0))
@@ -60,4 +64,6 @@ def collate_fn(dataset_items: list[dict]):
     result_batch['melspec_hr'] = padded_specs_hr
     result_batch['paths_lr'] = paths_lr
     result_batch['paths_hr'] = paths_hr
+    result_batch['initial_sr'] = initial_sr
+    result_batch['target_sr'] = target_sr
     return result_batch

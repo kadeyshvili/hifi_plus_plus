@@ -1,3 +1,3 @@
-from src.datasets.hifigan_dataset import VCTKDataset
+from src.datasets.hifigan_dataset import VCTKDataset, SRConsistentBatchSampler
 
-__all__ = ['VCTKDataset']
+__all__ = ['VCTKDataset', 'SRConsistentBatchSampler']
