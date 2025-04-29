@@ -100,15 +100,16 @@ class MOSNet(Metric):
  
     def __call__(self, samples, real_samples, target_sr, initial_sr=None):
         super().__call__(samples, real_samples, target_sr, initial_sr)
- 
+
         required_sr = self.mos_net.sample_rate
         resample = torchaudio.transforms.Resample(
-            orig_freq=self.sr, new_freq=required_sr
+            orig_freq=target_sr, new_freq=required_sr
         ).to(self.device)
- 
+        samples = samples.to(self.device)
+        
         samples /= samples.abs().max(-1, keepdim=True)[0]
         samples = [resample(s).squeeze() for s in samples]
- 
+
         splits = [
             samples[i : i + self.num_splits]
             for i in range(0, len(samples), self.num_splits)
@@ -117,7 +118,7 @@ class MOSNet(Metric):
 
         self.results[self.current_mode]["mean"].append(np.mean(fid_per_splits))
         self.results[self.current_mode]["std"].append(np.std(fid_per_splits))
- 
+
         return np.mean(fid_per_splits)
  
  
