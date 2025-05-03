@@ -122,37 +122,23 @@ class Inferencer(BaseTrainer):
                 the dataloader (possibly transformed via batch transform)
                 and model outputs.
         """
-        # TODO change inference logic so it suits ASR assignment
-        # and task pipeline
 
         batch = self.move_batch_to_device(batch)
-        # batch = self.transform_batch(batch)  # transform batch on device -- faster
+        initial_sr = batch['initial_sr']
+        target_sr = batch['target_sr']
 
-        generated_wavs = self.model.generator(batch['wav_lr'], batch['wav_hr'], self.config.datasets.test.initial_sr, self.config.datasets.test.target_sr)
+        generated_wavs = self.model.generator(batch['wav_lr'], batch['wav_hr'], initial_sr, target_sr)
         batch['generated_wav'] = generated_wavs
 
-
-        if metrics is not None:
-            calculate_all_metrics(batch['generated_wav'], batch['wav_hr'], self.metrics["inference"], self.config.datasets.test.initial_sr, self.config.datasets.test.target_sr)
-            for met in self.metrics["inference"]:
-                metrics.update(met.name, np.mean(met.result['mean']))
-                # met.result['mean'] = []
-                # met.result['std'] = []
-
-        # Some saving logic. This is an example
-        # Use if you need to save predictions on disk
 
         batch_size = batch["generated_wav"].shape[0]
 
         for i in range(batch_size):
-            # clone because of
-            # https://github.com/pytorch/pytorch/issues/1995
             generated_wavs = batch["generated_wav"][i].detach().clone()
             path_to_save =  batch["paths_hr"][i]
 
             if self.save_path is not None:
-                # you can use safetensors or other lib here
-                torchaudio.save(self.save_path / part /  f"{str(Path(path_to_save).stem)}.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=self.config.datasets.test.target_sr)
+                torchaudio.save(self.save_path / part /  f"{str(Path(path_to_save).stem)}.wav", generated_wavs.detach().to(torch.device('cpu')), sample_rate=target_sr)
               
         return batch
 
@@ -172,6 +158,9 @@ class Inferencer(BaseTrainer):
 
         self.evaluation_metrics.reset()
 
+        metrics_4_8 = {}
+        metrics_8_16 = {}
+
         # create Save dir
         if self.save_path is not None:
             (self.save_path / part).mkdir(exist_ok=True, parents=True)
@@ -188,6 +177,41 @@ class Inferencer(BaseTrainer):
                     part=part,
                     metrics=self.evaluation_metrics,
                 )
+                initial_sr = batch['initial_sr']
+                target_sr = batch['target_sr']
+                if initial_sr == 4000 and target_sr == 8000:
+                    batch_metrics = calculate_all_metrics(
+                        batch['generated_wav'], 
+                        batch['wav_hr'],
+                        self.metrics['inference'], 
+                        initial_sr, 
+                        target_sr
+                    )
+                    for k, (mean, std) in batch_metrics.items():
+                        if k in metrics_4_8:
+                            metrics_4_8[k].append(mean)
+                        else:
+                            metrics_4_8[k] = [mean]
+                elif initial_sr == 8000 and target_sr == 16000:
+                    batch_metrics = calculate_all_metrics(
+                        batch['generated_wav'], 
+                        batch['wav_hr'],
+                        self.metrics['inference'], 
+                        initial_sr, 
+                        target_sr
+                    )
+                    for k, (mean, std) in batch_metrics.items():
+                        if k in metrics_8_16:
+                            metrics_8_16[k].append(mean)
+                        else:
+                            metrics_8_16[k] = [mean]
+        for k, values in metrics_4_8.items():
+            mean_val = np.mean(values)
+            self.evaluation_metrics.update(k, mean_val)
+
+        for k, values in metrics_8_16.items():
+            mean_val = np.mean(values)
+            self.evaluation_metrics.update(k, mean_val)
 
         return self.evaluation_metrics.result()
     
