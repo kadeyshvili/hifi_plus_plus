@@ -403,7 +403,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
         closest_size = ((current_size + 1023) // 1024) * 1024
         pad_size =  closest_size - current_size
         padded_x = torch.nn.functional.pad(initial_x, (0, pad_size))
-        padded_reference = torch.nn.functional.pad(x_reference, (0, pad_size * (target_sr // initial_sr)))
+        padded_reference = torch.nn.functional.pad(x_reference, (0, pad_size * (target_sr // initial_sr))).to(x.device)
         resampled_once = []
         for i in range(batch_size):
             x_single = padded_x[i].cpu().numpy()
