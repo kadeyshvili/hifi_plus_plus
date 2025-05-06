@@ -523,7 +523,7 @@ class FFC(nn.Module):
         return out_xl, out_xg
 
 
-class NewWaveBlock(nn.Module):
+class NUWaveBlock(nn.Module):
     def __init__(self, residual_channels, bsft_channels,):
         super().__init__()
         self.input_projection = Conv1d(2, residual_channels, 1)
