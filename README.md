@@ -91,8 +91,7 @@ The model uses Hydra for configuration management. Key configuration parameters 
 ### Reproducing Best Results
 
 To train the model with our optimal configuration:
-```bash
-python3 scripts/download_weights.py
+
 ```bash
 python3 train.py  model.generator_config.upsample_block_rates=[2] model.generator_config.upsample_block_kernel_sizes=[4] model.generator_config.use_spectralmasknet=False datasets.train.split=True datasets.val.split=True datasets.train.vctk_wavs_dir_lr=<path_to_lr> datasets.train.vctk_wavs_dir_hr=<path_to_hr> datasets.val.vctk_wavs_dir_lr=<path_to_lr> datasets.val.vctk_wavs_dir_hr=<path_to_hr> "trainer.monitor=min val_LSD" dataloader.train.batch_size=4 dataloader.val.batch_size=4 trainer.log_step=500 trainer.n_epochs=400 trainer.epoch_len=500 datasets.train.dataset_split_file=<path_to_split_file/training.txt> datasets.val.dataset_split_file=/<path_to_split_file/val.txt> +writer.api_key=<your_api_key>
 ```
@@ -100,7 +99,7 @@ python3 train.py  model.generator_config.upsample_block_rates=[2] model.generato
 ### How to run inference
 To evaluate a trained model:
 ```bash
-python3 inference.py  inferencer.from_pretrained="path_to_pretrained_model" model.generator_config.upsample_block_rates=[2] model.generator_config.upsample_block_kernel_sizes=[4] model.generator_config.use_spectralmasknet=False datasets.test.split=True datasets.test.vctk_wavs_dir_lr=<path_to_lr> datasets.test.vctk_wavs_dir_hr=<path_to_hr> dataloader.test.batch_size=4 datasets.test.dataset_split_file=<path_to_split_file/test.txt> 
+python3 inference.py -cn="inference_config" inferencer.from_pretrained="path_to_pretrained_model" model.generator_config.upsample_block_rates=[2] model.generator_config.upsample_block_kernel_sizes=[4] model.generator_config.use_spectralmasknet=False datasets.test.split=True datasets.test.vctk_wavs_dir_lr=<path_to_lr> datasets.test.vctk_wavs_dir_hr=<path_to_hr> dataloader.test.batch_size=4 datasets.test.dataset_split_file=<path_to_split_file/test.txt> 
 ```
 
 
