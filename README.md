@@ -12,13 +12,13 @@
 
 ## About
 
-This repository contains the implementation for my diploma research on Generative Adversarial Networks for Audio Super-Resolution with Varying Sample Rate. The current branch implements our approach of training blocks separately. This methodology involves alternating between different batches during training - first processing a 4$\rightarrow$8 kHz batch, then an 8$\rightarrow$16 kHz batch. Each upsampling task is optimized with its own dedicated loss functions, and performance metrics are calculated independently for each resolution stage.
+This repository contains the implementation for my diploma research on Generative Adversarial Networks for Audio Super-Resolution with Varying Sample Rate. The current branch implements our approach of training blocks separately. This methodology involves alternating between different batches during training - first processing a 4&rarr;8 kHz batch, then an 8&rarr;16 kHz batch. Each upsampling task is optimized with its own dedicated loss functions, and performance metrics are calculated independently for each resolution stage.
 
 
 ## Features
 
 - Hybrid Architecture: Combines strengths of NU-Wave2 and HiFi++ models
-- Multi-Resolution Support: Handles multiple upsampling scenarios (4$\rightarrow$8 kHz, 8$\rightarrow$16 kHz, and 4$\rightarrow$16 kHz)
+- Multi-Resolution Support: Handles multiple upsampling scenarios (4&rarr;8 kHz, 8&rarr;16 kHz, and 4&rarr;16 kHz)
 - Modular Design: Components can be trained independently or jointly
 - Optimized Training: Custom training techniques for optimizing model performance
 - Efficient Processing: Reduced computational overhead compared to traditional approaches
