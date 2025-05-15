@@ -1,17 +1,27 @@
-# Implementation of neural vocoder HiFi-GAN
+# Generative Adversarial Networks for Audio Super-Resolution with Varying Sample Rate
 
 <p align="center">
   <a href="#about">About</a> •
+  <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
-  <a href="#how-to-use">How To Use</a> •
-  <a href="#credits">Credits</a> •
+  <a href="#usage">Usage</a> •
+  <a href="#experiments">Experiments</a> •
   <a href="#license">License</a>
 </p>
 
 
 ## About
 
-See the task assignment [here](https://github.com/markovka17/dla/tree/2024/hw3_nv).
+This repository contains the implementation for my diploma research on Generative Adversarial Networks for Audio Super-Resolution with Varying Sample Rate. The current branch implements our approach of training blocks separately. This methodology involves alternating between different batches during training - first processing a 4$\rightarrow$8 kHz batch, then an 8$\rightarrow$16 kHz batch. Each upsampling task is optimized with its own dedicated loss functions, and performance metrics are calculated independently for each resolution stage.
+
+
+## Features
+
+- Hybrid Architecture: Combines strengths of NU-Wave2 and HiFi++ models
+- Multi-Resolution Support: Handles multiple upsampling scenarios (4$\rightarrow$8 kHz, 8$\rightarrow$16 kHz, and 4$\rightarrow$16 kHz)
+- Modular Design: Components can be trained independently or jointly
+- Optimized Training: Custom training techniques for optimizing model performance
+- Efficient Processing: Reduced computational overhead compared to traditional approaches
 
 ## Installation
 
@@ -53,56 +63,52 @@ Follow these steps to install the project:
    pre-commit install
    ```
 
-## How To Use
+## Usage
 
-To train a model, run the following command:
+
+### Training a Model
+The basic command for training:
 
 ```bash
 python3 train.py -cn=hifigan HYDRA_CONFIG_ARGUMENTS
 ```
 
+### Configuration
 
-### How to reproduce the results of the best model (train)
+The model uses Hydra for configuration management. Key configuration parameters include:
 
-- to train your model use config *hifi_dataset* in configs specify path to audio files in *datasets.train.data_path=""  datasets.val.data_path=""*
+- *datasets.train.dataset_split_file*: Path to training dataset split
+- *datasets.val.dataset_split_file*: Path to validation dataset split
+- *datasets.train.wavs_dir_4khz*: Directory containing 4kHz audios
+- *datasets.val.wavs_dir_4khz*: Directory containing 4kHz audios
+- *datasets.train.wavs_dir_8khz*: Directory containing 8kHz audios
+- *datasets.val.wavs_dir_8khz*: Directory containing 8kHz audios
+- *datasets.train.wavs_dir_16khz*: Directory containing 16kHz audios
+- *datasets.val.wavs_dir_16khz*: Directory containing 16kHz audios
 
-run the following command (fill in the paths to a data set):
+## Experiments
 
+### How to resample initial audio 
+To resample your high-resolution audio files to a lower sample rate (e.g., from 48 kHz to 4 kHz), use the following command:
 ```bash
-python3 train.py -cn="hifigan" trainer.n_epochs=110 trainer.epoch_len=500 HYDRA_CONFIG_ARGUMENTS
+python3 resample_data.py --data_dir <path for 48 kHz data> --out_dir <path for 4 kHz data> --target_sr 4000
 ```
 
-## Link to pretrained HiFi-GAN model 
-[link](https://drive.google.com/file/d/17C3iA42W5fkoCyxZqO-Tu_-Z92IyBaMO/view?usp=sharing)
+### Reproducing Best Results
 
-## How to run synthesize
-- First you need to download pretrained model directly by following the link above or by running script that automatically downloads pretrained model. The pretrained model will be saved to scripts directory. To run script use the following commands
+To train the model with our optimal configuration:
 
 ```bash
-python3 scripts/download_weights.py
+python3 train.py  model.generator_config.upsample_block_rates=[2] model.generator_config.upsample_block_kernel_sizes=[4] model.generator_config.use_spectralmasknet=False datasets.train.split=True datasets.val.split=True datasets.train.wavs_dir_4khz=<path_to_4kHz_dir> datasets.train.wavs_dir_8khz=<path_to_8kHz_dir> datasets.train.wavs_dir_16khz=<path_to_16kHz_dir> datasets.val.wavs_dir_4khz=<path_to_4kHz_dir> datasets.val.wavs_dir_8khz=<path_to_8kHz_dir> datasets.val.wavs_dir_16khz=<path_to_16kHz_dir> "trainer.monitor=min val_LSD" dataloader.train.batch_size=4 dataloader.val.batch_size=4 trainer.log_step=500 trainer.n_epochs=400 trainer.epoch_len=500 datasets.train.dataset_split_file=<path_to_split_file/training.txt> datasets.val.dataset_split_file=/<path_to_split_file/val.txt> +writer.api_key=<your_api_key>
+```
+
+### How to run inference
+To evaluate a trained model:
+```bash
+python3 inference.py -cn="inference_config" inferencer.from_pretrained="path_to_pretrained_model" model.generator_config.upsample_block_rates=[2] model.generator_config.upsample_block_kernel_sizes=[4] model.generator_config.use_spectralmasknet=False datasets.test.split=True datasets.test.wavs_dir_4khz=<path_to_4kHz_dir> datasets.test.wavs_dir_8khz=<path_to_8kHz_dir> datasets.test.wavs_dir_16khz=<path_to_16kHz_dir> dataloader.test.batch_size=4 datasets.test.dataset_split_file=<path_to_split_file/test.txt> 
 ```
 
 
-- To synthesize audios from inital wavs provide specify path to directory containing files with audios .wav  by using *datasets.test.data_path=""*  you need also provide path to pretrained model by specifying *inferencer.from_pretrained='path_to_your_model'*
-
-```bash
-python3 synthesize.py -cn="synthesize_from_wav"  HYDRA_CONFIG_ARGUMENTS
-```
-
-- If you want to synthesize audio from text from file .txt you need to specify path to directory containing files with text .txt *datasets.test.data_path=""*  you need also provide path to pretrained model by specifying *inferencer.from_pretrained='path_to_your_model'* Then you need to run the following command
-
-```bash
-python3 synthesize.py -cn="synthesize_from_text"  HYDRA_CONFIG_ARGUMENTS
-```
-- If you want to synthesize audio by typing in terminal you need to use *inferencer.text_from_console="your text"* you need also provide path to pretrained model by specifying *inferencer.from_pretrained='path_to_your_model'* Then you need to run the following command
-
-```bash
-python3 synthesize.py -cn="synthesize_from_text"  inferencer.text_from_console="your text" HYDRA_CONFIG_ARGUMENTS
-```
-
-## Credits
-
-This repository is based on a [PyTorch Project Template](https://github.com/Blinorot/pytorch_project_template).
 
 ## License
 
