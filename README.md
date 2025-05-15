@@ -18,7 +18,7 @@ This repository contains the implementation for my diploma research on Generativ
 ## Features
 
 - Hybrid Architecture: Combines strengths of NU-Wave2 and HiFi++ models
-- Multi-Resolution Support: Handles multiple upsampling scenarios (4→8 kHz, 8→16 kHz, and 4→16 kHz)
+- Multi-Resolution Support: Handles multiple upsampling scenarios (4&rarr;8 kHz, 8&rarr;16 kHz, and 4&rarr;16 kHz)
 - Modular Design: Components can be trained independently or jointly
 - Optimized Training: Custom training techniques for optimizing model performance
 - Efficient Processing: Reduced computational overhead compared to traditional approaches
@@ -87,6 +87,12 @@ The model uses Hydra for configuration management. Key configuration parameters 
 - *model.target_sample_rate*: Target sampling rate (e.g., 8000 or 16000)
 
 ## Experiments
+
+### How to resample initial audio 
+To resample your high-resolution audio files to a lower sample rate (e.g., from 48 kHz to 4 kHz), use the following command:
+```bash
+python3 resample_data.py --data_dir <path for 48 kHz data> --out_dir <path for 4 kHz data> --target_sr 4000
+```
 
 ### Reproducing Best Results
 
