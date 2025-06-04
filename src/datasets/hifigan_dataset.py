@@ -66,8 +66,15 @@ class VCTKDataset(BaseDataset):
         vctk_audio_hr = librosa.load(vctk_fn_hr, sr=self.target_sr, res_type="polyphase",)[0]
 
         (vctk_audio_lr,), (vctk_audio_hr, ) = split_audios([vctk_audio_lr], [vctk_audio_hr], self.segment_size, self.split, self.initial_sr, self.target_sr)
+        
 
         input_audio_lr = normalize(vctk_audio_lr)[None] * 0.95
+        
+        reference_wav = librosa.resample(
+                    vctk_audio_lr, orig_sr=self.initial_sr, target_sr=self.target_sr, res_type="polyphase"
+                )
+        reference_wav = torch.FloatTensor(reference_wav)
+
         input_audio_hr = normalize(vctk_audio_hr)[None] * 0.95
         assert input_audio_lr.shape[1] == vctk_audio_lr.size
         assert input_audio_hr.shape[1] == vctk_audio_hr.size
@@ -78,7 +85,7 @@ class VCTKDataset(BaseDataset):
         melspec_hr = self.mel_creator_hr(input_audio_hr.detach()).squeeze(0)
 
         return {"wav_lr": input_audio_lr, 'wav_hr': input_audio_hr, 'path_lr' : vctk_fn_lr, 'path_hr':vctk_fn_hr, \
-                 'melspec_lr' : melspec_lr, 'melspec_hr' : melspec_hr, 'mode':self.mode}
+                 'melspec_lr' : melspec_lr, 'melspec_hr' : melspec_hr, 'mode':self.mode, 'reference_wav':reference_wav}
 
     def __len__(self):
         return len(self.audio_files_lr)

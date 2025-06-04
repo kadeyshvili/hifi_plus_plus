@@ -406,7 +406,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
 
 
         if batch['mode'] == 'train':
-            x_reference = batch['wav_hr']
+            x_reference = batch['reference_wav']
         else:
             resampled_audio = []
             for i in range(batch_size):
@@ -422,7 +422,6 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
                 resampled_audio.append(x_resampled)
             x_reference = np.stack(resampled_audio)
             x_reference = torch.tensor(x_reference, dtype=padded_x.dtype).to(x.device)
-
 
         current_reference_len = x_reference.shape[-1]
         pad_reference_len = expected_reference_len - current_reference_len

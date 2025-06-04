@@ -31,8 +31,14 @@ def collate_fn(dataset_items: list[dict]):
     initial_len_melspec_lr = []
     initial_len_melspec_hr = []
     mode = None
+    reference_wav = []
+    initial_len_reference_wav = []
+    max_len_reference_wav = 0
     for item in dataset_items:
         mode = item['mode']
+        reference_wav.append(item['reference_wav'])
+        initial_len_reference_wav.append(item['reference_wav'].shape[-1])
+        max_len_reference_wav = max(max_len_reference_wav, item['reference_wav'].shape[-1])
         paths_lr.append(item['path_lr'])
         paths_hr.append(item['path_hr'])
         all_wavs_lr.append(item['wav_lr'].squeeze(0))
@@ -63,4 +69,5 @@ def collate_fn(dataset_items: list[dict]):
     result_batch['paths_lr'] = paths_lr
     result_batch['paths_hr'] = paths_hr
     result_batch['mode'] = mode
+    result_batch['reference_wav'] = torch.stack([F.pad(wav, (0, max_len_reference_wav - wav.shape[0]), value=0) for wav in reference_wav]).unsqueeze(1) 
     return result_batch
