@@ -8,3 +8,4 @@ test:
   segment_size: 32768
   device: ${inferencer.device}
   split: True
+  mode: 'test'

@@ -7,7 +7,7 @@ from librosa.filters import mel as librosa_mel_fn
 import numpy as np
 import src.utils.upsampling_utils as upsampling_utils
 import librosa
-
+from torch.profiler import profile, record_function, ProfilerActivity
 
 
 mel_basis = {}
@@ -394,16 +394,35 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             x += self.waveunet_skip_connect(x_a)
         return x
 
-    def forward(self, x, x_reference, initial_sr, target_sr):
+    def forward(self, x, initial_sr, target_sr, **batch):
         initial_x = x.clone()
         batch_size = x.shape[0]
-
         current_size = initial_x.shape[-1]
         target_size = (target_sr // initial_sr) * current_size
         closest_size = ((current_size + 1023) // 1024) * 1024
         pad_size =  closest_size - current_size
         padded_x = torch.nn.functional.pad(initial_x, (0, pad_size))
         expected_reference_len = (closest_size * target_sr) // initial_sr
+
+
+        if batch['mode'] == 'train':
+            x_reference = batch['wav_hr']
+        else:
+            resampled_audio = []
+            for i in range(batch_size):
+                x_single = padded_x[i].cpu().numpy()
+                x_resampled = librosa.resample(
+                    x_single, orig_sr=initial_sr, target_sr=target_sr, res_type="polyphase"
+                )
+
+                target_length_resempled = x_single.shape[-1] * (target_sr // 2 // initial_sr)
+                if len(x_resampled) > target_length_resempled:
+                    x_resampled = x_resampled[:target_length_resempled]
+                
+                resampled_audio.append(x_resampled)
+            x_reference = np.stack(resampled_audio)
+            x_reference = torch.tensor(x_reference, dtype=padded_x.dtype).to(x.device)
+
 
         current_reference_len = x_reference.shape[-1]
         pad_reference_len = expected_reference_len - current_reference_len
@@ -424,8 +443,8 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             resampled_once.append(x_resampled_once)
         
 
-        x_half_resempled = np.stack(resampled_once)
-        x_half_resempled = torch.tensor(x_half_resempled, dtype=padded_x.dtype).to(x.device)
+        x_half_resampled = np.stack(resampled_once)
+        x_half_resampled = torch.tensor(x_half_resampled, dtype=padded_x.dtype).to(x.device)
 
         upsampled_x = self.upsampling_block1(padded_x)
 
@@ -440,7 +459,7 @@ class A2AHiFiPlusGeneratorV4(HiFiPlusGenerator):
             band4_8[:int(hi * fft_size)] = 1
             band4_8 = band4_8.unsqueeze(0).unsqueeze(0) 
             band4_8 = band4_8.repeat(batch_size, 2, 1).to(upsampled_x.device)
-            x_4_8 = self.nw_block1(upsampled_x, x_half_resempled, band4_8)
+            x_4_8 = self.nw_block1(upsampled_x, x_half_resampled, band4_8)
 
 
             upsampled_x_4 = self.upsampling_block2(x_4_8)

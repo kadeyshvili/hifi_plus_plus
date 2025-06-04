@@ -40,6 +40,7 @@ class VCTKDataset(BaseDataset):
         segment_size=8192,
         initial_sr=2000,
         target_sr = 4000,
+        mode='train',
         split=True,
         device=None,
     ):
@@ -48,6 +49,7 @@ class VCTKDataset(BaseDataset):
         self.audio_files_hr = get_dataset_filelist(dataset_split_file,
                                                 vctk_wavs_dir_hr)
         random.seed(1234)
+        self.mode = mode
         self.segment_size = segment_size
         self.initial_sr = initial_sr
         self.split = split
@@ -76,7 +78,7 @@ class VCTKDataset(BaseDataset):
         melspec_hr = self.mel_creator_hr(input_audio_hr.detach()).squeeze(0)
 
         return {"wav_lr": input_audio_lr, 'wav_hr': input_audio_hr, 'path_lr' : vctk_fn_lr, 'path_hr':vctk_fn_hr, \
-                 'melspec_lr' : melspec_lr, 'melspec_hr' : melspec_hr}
+                 'melspec_lr' : melspec_lr, 'melspec_hr' : melspec_hr, 'mode':self.mode}
 
     def __len__(self):
         return len(self.audio_files_lr)

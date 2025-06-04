@@ -8,6 +8,7 @@ train:
   segment_size: 32768
   device: ${trainer.device}
   split: False
+  mode: 'train'
 val:
   _target_: src.datasets.VCTKDataset
   dataset_split_file: "src/VCTK_split/validation.txt"
@@ -18,3 +19,4 @@ val:
   segment_size: 32768
   device: ${trainer.device}
   split: False
+  mode: 'train'

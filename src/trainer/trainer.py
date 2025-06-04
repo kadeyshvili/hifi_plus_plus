@@ -46,7 +46,7 @@ class Trainer(BaseTrainer):
         target_wav = batch['wav_hr']
         initial_sr = self.config.datasets.train.initial_sr
         target_sr = self.config.datasets.train.target_sr
-        wav_fake = self.model.generator(initial_wav, target_wav, initial_sr, target_sr)
+        wav_fake = self.model.generator(initial_wav, initial_sr, target_sr, **batch)
  
         if target_wav.shape != wav_fake.shape:
             wav_fake = torch.stack([F.pad(wav, (0, target_wav.shape[2] - wav_fake.shape[2]), value=0) for wav in wav_fake])
