@@ -122,13 +122,13 @@ class Inferencer(BaseTrainer):
                 the dataloader (possibly transformed via batch transform)
                 and model outputs.
         """
-        # TODO change inference logic so it suits ASR assignment
-        # and task pipeline
 
         batch = self.move_batch_to_device(batch)
-        # batch = self.transform_batch(batch)  # transform batch on device -- faster
 
-        generated_wavs = self.model.generator(batch['wav_lr'], batch['wav_hr'], self.config.datasets.test.initial_sr, self.config.datasets.test.target_sr)
+        initial_wav = batch['wav_lr']
+        initial_sr = self.config.datasets.test.initial_sr
+        target_sr = self.config.datasets.test.target_sr
+        generated_wavs = self.model.generator(initial_wav, initial_sr, target_sr, **batch)
         batch['generated_wav'] = generated_wavs
 
 
