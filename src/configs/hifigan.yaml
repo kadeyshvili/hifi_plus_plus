@@ -1,6 +1,6 @@
 defaults:
   - model: hifigan
-  - writer: wandb
+  - writer: cometml
   - metrics: mos_metric
   - datasets: hifi_dataset
   - dataloader: loader

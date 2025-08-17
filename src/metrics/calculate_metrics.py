@@ -228,32 +228,32 @@ class LSD(Metric):
         self.result["mean"].append(np.mean(lsd))
         self.result["std"].append(np.std(lsd))
 
-
 class LSD_LF(Metric):
     name = "LSD_LF"
 
     def better(self, first, second):
         return first < second
-    def __call__(self, out_sig, ref_sig, initial_sr, target_sr):
+    
+    def __call__(self, out_sig, ref_sig, initial_sr, target_sr, cutoff_freq=4000):
         """
-        Compute LSD (log spectral distance)
-        Arguments:
-            out_sig: vector (torch.Tensor), enhanced signal [B,T]
-            ref_sig: vector (torch.Tensor), reference signal(ground truth) [B,T]
+        Compute LSD for frequencies below cutoff_freq
         """
-
         out_sig = out_sig.squeeze().cpu()
         ref_sig = ref_sig.squeeze().cpu()
 
         stft = STFTMag(2048, 512)
-        hf = int(1025 * (initial_sr / target_sr))
+        
+        nyquist = target_sr // 2
+        cutoff_bin =int((cutoff_freq / nyquist) * 1025)
+        cutoff_bin = min(cutoff_bin, 1024)
+        
         sp = torch.log10(stft(ref_sig).square().clamp(1e-8))
         st = torch.log10(stft(out_sig).square().clamp(1e-8))
-        lsd = (sp[:hf,:] - st[:hf,:]).square().mean(dim=1).sqrt().mean()
+        
+        lsd = (sp[:cutoff_bin,:] - st[:cutoff_bin,:]).square().mean(dim=1).sqrt().mean()
         lsd = lsd.cpu().numpy()
         self.result["mean"].append(np.mean(lsd))
         self.result["std"].append(np.std(lsd))
-
 
 
 class LSD_HF(Metric):
@@ -261,22 +261,29 @@ class LSD_HF(Metric):
 
     def better(self, first, second):
         return first < second
-    def __call__(self, out_sig, ref_sig, initial_sr, target_sr):
+    
+    def __call__(self, out_sig, ref_sig, initial_sr, target_sr, cutoff_freq=4000):
         """
-        Compute LSD (log spectral distance)
-        Arguments:
-            out_sig: vector (torch.Tensor), enhanced signal [B,T]
-            ref_sig: vector (torch.Tensor), reference signal(ground truth) [B,T]
+        Compute LSD for frequencies above cutoff_freq
         """
-
         out_sig = out_sig.squeeze().cpu()
         ref_sig = ref_sig.squeeze().cpu()
 
         stft = STFTMag(2048, 512)
-        hf = int(1025 * (initial_sr / target_sr))
+        
+        nyquist = target_sr // 2
+        cutoff_bin = int((cutoff_freq / nyquist) * 1025)
+        cutoff_bin = min(cutoff_bin, 1024)
+        
         sp = torch.log10(stft(ref_sig).square().clamp(1e-8))
         st = torch.log10(stft(out_sig).square().clamp(1e-8))
-        lsd_hf = (sp[hf:,:] - st[hf:,:]).square().mean(dim=1).sqrt().mean()
+        
+        if cutoff_bin >= sp.shape[0]:
+            self.result["mean"].append(0.0)
+            self.result["std"].append(0.0)
+            return
+        
+        lsd_hf = (sp[cutoff_bin:,:] - st[cutoff_bin:,:]).square().mean(dim=1).sqrt().mean()
         lsd_hf = lsd_hf.cpu().numpy()
         self.result["mean"].append(np.mean(lsd_hf))
         self.result["std"].append(np.std(lsd_hf))

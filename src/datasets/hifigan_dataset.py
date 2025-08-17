@@ -55,14 +55,14 @@ def get_dataset_filelist(dataset_split_file, input_wavs_dir):
 
 
 
-def low_pass_filter(audio: np.ndarray, max_freq,
-                    lp_type="default", orig_sr=16000):
+def low_pass_filter(audio: np.ndarray, low_sampling_rate,
+                    lp_type="default", high_sampling_rate=16000):
     if lp_type == "default":
         tmp = librosa.resample(
-            audio, orig_sr=orig_sr, target_sr=max_freq * 2, res_type="polyphase"
+            audio, orig_sr=high_sampling_rate, target_sr=low_sampling_rate * 2, res_type="polyphase"
         )
     elif lp_type == "decimate":
-        sub = orig_sr / (max_freq * 2)
+        sub = high_sampling_rate / (low_sampling_rate * 2)
         assert int(sub) == sub
         tmp = scipy.signal.decimate(audio, int(sub))
     else:
@@ -70,7 +70,7 @@ def low_pass_filter(audio: np.ndarray, max_freq,
     # soxr_hq is faster and better than polyphase,
     # but requires additional libraries installed
     # the speed difference is only 4 times, we can live with that
-    tmp = librosa.resample(tmp, orig_sr=max_freq * 2, target_sr=16000, res_type="polyphase")
+    tmp = librosa.resample(tmp, orig_sr=low_sampling_rate * 2, target_sr=high_sampling_rate, res_type="polyphase")
     return tmp[: audio.size]
 
 
@@ -103,11 +103,11 @@ class VCTKDataset(BaseDataset):
         dataset_split_file,
         vctk_wavs_dir,
         segment_size=8192,
-        sampling_rate=16000,
+        high_sampling_rate=16000,
         split=True,
         shuffle=False,
         device=None,
-        input_freq=None,
+        low_sampling_rate=None,
         lowpass="default",
     ):
         self.audio_files = get_dataset_filelist(dataset_split_file,
@@ -116,10 +116,10 @@ class VCTKDataset(BaseDataset):
         if shuffle:
             random.shuffle(self.audio_files)
         self.segment_size = segment_size
-        self.sampling_rate = sampling_rate
+        self.high_sampling_rate = high_sampling_rate
         self.split = split
         self.device = device
-        self.input_freq = input_freq
+        self.low_sampling_rate = low_sampling_rate
         self.lowpass = lowpass
         self.clean_wavs_dir = vctk_wavs_dir
         self.mel_creator = MelSpectrogram(MelSpectrogramConfig())
@@ -129,15 +129,15 @@ class VCTKDataset(BaseDataset):
 
         vctk_audio = librosa.load(
             vctk_fn,
-            sr=self.sampling_rate,
+            sr=self.high_sampling_rate,
             res_type="polyphase",
         )[0]
         (vctk_audio, ) = split_audios([vctk_audio],
                                       self.segment_size, self.split)
 
         lp_inp = low_pass_filter(
-            vctk_audio, self.input_freq,
-            lp_type=self.lowpass, orig_sr=self.sampling_rate
+            vctk_audio, low_sampling_rate=self.low_sampling_rate,
+            lp_type=self.lowpass, high_sampling_rate=self.high_sampling_rate
         )
         input_audio = normalize(lp_inp)[None] * 0.95
         assert input_audio.shape[1] == vctk_audio.size

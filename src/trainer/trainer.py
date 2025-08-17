@@ -117,7 +117,7 @@ class Trainer(BaseTrainer):
 
         if not self.is_train:
             # for i in range(len(self.metrics["inference"])):
-            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"], self.config.datasets.val.input_freq, self.config.datasets.val.sampling_rate)
+            calculate_all_metrics(batch['generated_wav'], batch['wav'], self.metrics["inference"], self.config.datasets.val.low_sampling_rate, self.config.datasets.val.high_sampling_rate)
             # for metric in self.metrics["inference"]:
 
             # self.metrics["inference"][i](batch['generated_wav'], batch['initial_len'])
@@ -152,11 +152,11 @@ class Trainer(BaseTrainer):
     def log_audio(self, wav, generated_wav, partition, idx, **batch):
         init_len = batch['initial_len'][0]
         if partition != 'val':
-            self.writer.add_audio("initial_wav", wav[0][:, :init_len], self.config.datasets.train.sampling_rate)
-            self.writer.add_audio("generated_wav", generated_wav[0][:, :init_len], self.config.datasets.train.sampling_rate)
+            self.writer.add_audio("initial_wav", wav[0][:, :init_len], self.config.datasets.train.high_sampling_rate)
+            self.writer.add_audio("generated_wav", generated_wav[0][:, :init_len], self.config.datasets.train.high_sampling_rate)
         else:
-            self.writer.add_audio(f"initial_wav_{idx}", wav[0][:, :init_len], self.config.datasets.val.sampling_rate)
-            self.writer.add_audio(f"generated_wav_{idx}", generated_wav[0][:, :init_len], self.config.datasets.val.sampling_rate)
+            self.writer.add_audio(f"initial_wav_{idx}", wav[0][:, :init_len], self.config.datasets.val.high_sampling_rate)
+            self.writer.add_audio(f"generated_wav_{idx}", generated_wav[0][:, :init_len], self.config.datasets.val.high_sampling_rate)
 
 
     def log_spectrogram(self, melspec,  mel_spec_fake, partition, idx, **batch):
