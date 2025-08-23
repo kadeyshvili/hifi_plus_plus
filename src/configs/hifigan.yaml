@@ -28,7 +28,7 @@ trainer:
   log_step: 1
   n_epochs: 1
   epoch_len: 2
-  device_tensors: ["wav", "melspec"] # which tensors should be on device (ex. GPU)
+  device_tensors: ["wav", "melspec", "gt_wav", "gt_melspec"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: True # if True, will override the previous run with the same name
