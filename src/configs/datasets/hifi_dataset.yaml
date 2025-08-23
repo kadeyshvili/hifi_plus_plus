@@ -1,7 +1,7 @@
 train:
   _target_: src.datasets.VCTKDataset
   dataset_split_file: "src/VCTK_split/training.txt"
-  vctk_wavs_dir: /Users/polinakadeyshvili/AMI/4_course/diplom/hifi++_dla/4khz
+  vctk_wavs_dir: /Users/polinakadeyshvili/AMI/4_course/diplom/hifi++_dla/16khz
   high_sampling_rate: 16000
   low_sampling_rate: 4000
   segment_size: 32768
@@ -11,7 +11,7 @@ train:
 val:
   _target_: src.datasets.VCTKDataset
   dataset_split_file: "src/VCTK_split/validation.txt"
-  vctk_wavs_dir: /Users/polinakadeyshvili/AMI/4_course/diplom/hifi++_dla/4khz
+  vctk_wavs_dir: /Users/polinakadeyshvili/AMI/4_course/diplom/hifi++_dla/16khz
   high_sampling_rate: 16000
   low_sampling_rate: 4000
   segment_size: 32768

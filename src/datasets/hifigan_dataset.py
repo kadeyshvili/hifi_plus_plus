@@ -143,13 +143,16 @@ class VCTKDataset(BaseDataset):
         assert input_audio.shape[1] == vctk_audio.size
 
         input_audio = torch.FloatTensor(input_audio)
+        gt_audio = torch.FloatTensor(normalize(vctk_audio) * 0.95)
+        gt_audio = gt_audio.unsqueeze(0)
         # audio = torch.FloatTensor(normalize(vctk_audio) * 0.95)
         # audio = audio.unsqueeze(0)
         # input_audio = torch.nn.functional.pad(input_audio, (0, self.segment_size - input_audio.size(1)), 'constant')
         # audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
         melspec = self.mel_creator(input_audio.detach()).squeeze(0)
+        melspec_gt = self.mel_creator(gt_audio.detach()).squeeze(0)
 
-        return {"wav": input_audio, 'path' : vctk_fn, 'melspec' : melspec}
+        return {"wav": input_audio, 'path' : vctk_fn, 'melspec' : melspec, "gt_wav": gt_audio, 'gt_melspec': melspec_gt}
         # return input_audio, audio
 
     def __len__(self):
